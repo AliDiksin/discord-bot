@@ -1,0 +1,27 @@
+# Example user unit. Copy to ~/.config/systemd/user/, replace the two paths,
+# then: systemctl --user daemon-reload && systemctl --user enable --now discord-reaction-gateway.service
+[Unit]
+Description=SF Stats Discord queue bell reaction gateway
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=20
+
+[Service]
+Type=simple
+EnvironmentFile=/path/to/discord-bot/.env
+WorkingDirectory=/path/to/discord-bot
+ExecStart=/usr/bin/node scripts/discord-reaction-gateway.mjs
+Restart=always
+RestartSec=10
+TimeoutStopSec=15
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,27 @@
+{
+  "name": "sfstats-discord-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SF Stats Discord app: slash command definitions, the replay-queue reaction gateway and the interaction protocol",
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:sfstatsapp/discord-bot",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "gateway": "node scripts/discord-reaction-gateway.mjs",
+    "register": "node scripts/register-discord-commands.mjs",
+    "emojis": "node scripts/sync-discord-emojis.mjs"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+.env
+.env.*
+!.env.example
+# Character portraits and rank badges are Capcom assets and are not published here.
+public/profile-assets/v2/characters/*
+!public/profile-assets/v2/characters/.gitkeep
+public/ranks/*
+!public/ranks/.gitkeep
