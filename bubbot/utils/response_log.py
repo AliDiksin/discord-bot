@@ -211,16 +211,20 @@ def log_from_interaction(
     return log_record(record, base_dir=base_dir)
 
 
-# Owner notifications: DM first, then BUB_OWNER_NOTIFY_CHANNEL_ID / BUB_LOG_CHANNEL_ID.
+# Owner notifications: a DM to the owner and a post in the maintainers' report channel
+# (BUB_OWNER_NOTIFY_CHANNEL_ID / BUB_LOG_CHANNEL_ID, "off" for none). SF Stats reports there too.
 _DEFAULT_OWNER_USER_ID = 427263312217243668
+_DEFAULT_NOTIFY_CHANNEL_ID = 1563301451969724567
 
 
 def get_owner_notify_channel_id() -> Optional[int]:
     for env_name in ("BUB_OWNER_NOTIFY_CHANNEL_ID", "BUB_LOG_CHANNEL_ID"):
         raw = str(os.getenv(env_name, "") or "").strip()
+        if raw.lower() == "off":
+            return None
         if raw.isdigit():
             return int(raw)
-    return None
+    return _DEFAULT_NOTIFY_CHANNEL_ID
 
 
 def get_owner_notify_user_id() -> Optional[int]:
@@ -262,6 +266,7 @@ async def notify_owner(client, record: dict[str, Any]) -> bool:
     content = format_owner_notification(record)
     if len(content) > 1900:
         content = content[:1900] + "…"
+    delivered = False
     owner_id = get_owner_notify_user_id()
     if owner_id:
         try:
@@ -269,7 +274,7 @@ async def notify_owner(client, record: dict[str, Any]) -> bool:
             if user is None:
                 user = await client.fetch_user(owner_id)
             await user.send(content)
-            return True
+            delivered = True
         except Exception as exc:
             print(f"Owner notify DM error: {exc}", flush=True)
     channel_id = get_owner_notify_channel_id()
@@ -278,11 +283,14 @@ async def notify_owner(client, record: dict[str, Any]) -> bool:
             channel = client.get_channel(channel_id)
             if channel is None:
                 channel = await client.fetch_channel(channel_id)
-            await channel.send(content)
-            return True
+            # Prompts are user text: never let one ping the channel.
+            import discord
+
+            await channel.send(content, allowed_mentions=discord.AllowedMentions.none())
+            delivered = True
         except Exception as exc:
             print(f"Owner notify channel error: {exc}", flush=True)
-    return False
+    return delivered
 
 
 async def log_and_notify_owner(

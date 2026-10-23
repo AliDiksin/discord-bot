@@ -8,7 +8,7 @@ from discord import app_commands
 
 import bot  # noqa: F401  (loads .env and wires the router before the bridge is inspected)
 
-from bubbot.runtime import message_router, sfstats_bridge, slash_commands
+from bubbot.runtime import message_router, sfstats_bridge, sfstats_messages, slash_commands
 from bubbot.runtime.sfstats_bridge import DISCORD_API, BridgeConfig
 
 
@@ -110,14 +110,22 @@ class ForwardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ack, callback["json"])
 
     async def test_failures_fall_back_to_a_private_notice(self):
+        report_env = {"DISCORD_TOKEN": "bot-token", "SFSTATS_DISCORD_REPORT_CHANNEL_ID": "1563301451969724567"}
         for web_app in (FakeResponse(500, {"error": "x"}), FakeResponse(200, None), asyncio.TimeoutError(), OSError("down")):
-            with self.subTest(web_app=type(web_app).__name__):
+            with self.subTest(web_app=type(web_app).__name__), patch.dict(os.environ, report_env):
+                sfstats_messages._last_report.clear()
                 session = FakeSession(web_app)
                 ack = await sfstats_bridge.forward(INTERACTION, session=session, config=ENABLED)
                 self.assertEqual(4, ack["type"])
                 self.assertEqual(64, ack["data"]["flags"])
                 self.assertEqual(sfstats_bridge.UNAVAILABLE_NOTICE, ack["data"]["content"])
-                self.assertEqual(ack, session.calls[-1]["json"], "Discord still gets an answer in time")
+                callback = next(call for call in session.calls if call["url"].endswith("/callback"))
+                self.assertEqual(ack, callback["json"], "Discord still gets an answer in time")
+                report = session.calls[-1]
+                self.assertLess(session.calls.index(callback), session.calls.index(report), "the report waits for the acknowledgement")
+                self.assertEqual(f"{DISCORD_API}/channels/1563301451969724567/messages", report["url"])
+                self.assertIn("/help", report["json"]["content"])
+                self.assertEqual({"parse": []}, report["json"]["allowed_mentions"])
 
     async def test_autocomplete_falls_back_to_no_choices(self):
         session = FakeSession(OSError("down"))

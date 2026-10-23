@@ -21,6 +21,8 @@ from pathlib import Path
 import aiohttp
 from discord import app_commands
 
+from bubbot.runtime import sfstats_messages
+
 
 DISCORD_API = "https://discord.com/api/v10"
 COMMANDS_FILE = Path(__file__).resolve().parents[1] / "data" / "sfstats_commands.json"
@@ -94,6 +96,7 @@ def load_command_definitions(path=COMMANDS_FILE):
 
 
 CONFIG = load_config()
+MESSAGES = sfstats_messages.load_config(CONFIG.url)
 COMMANDS = load_command_definitions()
 _COMMAND_KEYS = frozenset((command.get("name"), int(command.get("type", 1) or 1)) for command in COMMANDS)
 _session = None
@@ -174,9 +177,11 @@ async def forward(payload, *, session=None, config=None):
     try:
         ack = await _ask_web_app(session, payload, config)
         outcome = "ok"
+        failure = None
     except Exception as error:
         ack = fallback_ack(payload)
         outcome = f"unavailable ({type(error).__name__})"
+        failure = type(error).__name__
     try:
         await _send_callback(session, payload, ack)
     except Exception as error:
@@ -186,6 +191,9 @@ async def forward(payload, *, session=None, config=None):
         f"{outcome} {round((time.monotonic() - started) * 1000)}ms",
         flush=True,
     )
+    if failure and payload.get("type") != 4:
+        # After the acknowledgement, never before it. Autocomplete fails quietly; anything a person sees fail is reported.
+        await sfstats_messages.report_unavailable(session, "interaction", f"/{_interaction_label(payload)}: {failure}")
     return ack
 
 
@@ -204,6 +212,23 @@ async def handle_raw_gateway_event(message, *, config=None):
     if not enabled(config) or not is_sfstats_interaction(payload):
         return None
     return asyncio.create_task(forward(payload, config=config))
+
+
+async def claim_message(message, client, *, config=None, messages=None):
+    """Bub's on_message hook: True when SF Stats answers a plain-language message, so Bub skips it.
+    See ``sfstats_messages``; any failure leaves the message to Bub."""
+    config = config or CONFIG
+    messages = messages or MESSAGES
+    if not enabled(config) or not messages.enabled:
+        return False
+    try:
+        return await sfstats_messages.claim(
+            message, bot_user_id=getattr(getattr(client, "user", None), "id", None),
+            application_id=getattr(client, "application_id", None), session=_get_session(), bridge=config, config=messages,
+            allowed_guild_ids=None if config.global_commands else frozenset(config.test_guild_ids))
+    except Exception as error:
+        print(f"[sfstats-messages] Routing failed, leaving the message to Bub: {type(error).__name__}", flush=True)
+        return False
 
 
 def install_tree_error_filter(tree):

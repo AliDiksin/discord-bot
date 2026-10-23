@@ -1681,6 +1681,11 @@ async def _handle_message(message):
         await _send_main_menu_for_plain_mention(message)
         return
 
+    # SF Stats answers requests addressed to it and, when routing is on, the Bub mentions the
+    # web app's Decisions call assigns to it. Everything else, and any failure, stays with Bub.
+    if await sfstats_bridge.claim_message(message, client):
+        return
+
     directly_mentions_bot = message_directly_mentions_bot(message)
 
     game_only = menu_system.parse_game_only_mention(content_no_mentions)
