@@ -82,6 +82,7 @@ from bubbot.utils.text_utils import (
 )
 from bubbot.runtime.buenavista_extension import buenavista_extension
 from collections import deque
+from bubbot.runtime import sfstats_bridge
 from bubbot.runtime.slash_commands import register_slash_commands
 from bubbot.runtime.startup import handle_ready
 
@@ -1171,13 +1172,15 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.voice_states = True
-client = discord.Client(intents=intents)
+# Raw gateway events carry SF Stats interactions to the web app unchanged; only needed when bridged.
+client = discord.Client(intents=intents, enable_debug_events=sfstats_bridge.enabled())
 # Do not rely on the application's portal defaults for bot-DM command availability.
 tree = discord.app_commands.CommandTree(
     client,
     allowed_contexts=discord.app_commands.AppCommandContext(guild=True, dm_channel=True, private_channel=True),
     allowed_installs=discord.app_commands.AppInstallationType(guild=True, user=True),
 )
+sfstats_bridge.install_tree_error_filter(tree)
 
 
 def truncate_message(text, limit=1800):
@@ -1599,6 +1602,11 @@ async def send_deleted_message_failsafe(channel):
         await channel.send("That reply target disappeared, so I cannot attach the response there.")
     except Exception:
         pass
+
+
+@client.event
+async def on_socket_raw_receive(msg):
+    await sfstats_bridge.handle_raw_gateway_event(msg)
 
 
 @client.event

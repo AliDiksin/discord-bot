@@ -7,6 +7,7 @@ import re
 import aiohttp
 import discord
 
+from bubbot.runtime import sfstats_bridge
 from bubbot.utils.choice_utils import autocomplete_values, character_choices, move_choices
 from bubbot.features.fg_glossary import build_glossary_definition_embed, build_glossary_link_view
 from bubbot.frame_data.sf6_character_stats import (
@@ -63,6 +64,8 @@ async def _bulk_sync_global_commands_with_activity_entry(client, tree, local_com
 
     payload = [command.to_dict(tree) for command in local_commands]
     payload = [command for command in payload if int(command.get("type", 1) or 1) != 4]
+    # SF Stats commands join the global set only at cutover (SFSTATS_COMMANDS_GLOBAL).
+    payload = sfstats_bridge.merge_global_commands(payload)
     payload.append(_streetfighterdle_activity_entry_payload())
     url = f"https://discord.com/api/v10/applications/{application_id}/commands"
     headers = {"Authorization": f"Bot {token}", "Content-Type": "application/json"}
@@ -858,6 +861,14 @@ def register_slash_commands(tree, deps):
         return slash_choices(autocomplete_values(current, ["midscreen", "corner"]))
 
 async def sync_public_slash_commands(client, tree):
+    """Sync Bub's commands, then the SF Stats test-guild commands (after guild copies are cleared)."""
+    synced = await _sync_bub_slash_commands(client, tree)
+    application_id = getattr(client, "application_id", None) or getattr(getattr(client, "user", None), "id", None)
+    await sfstats_bridge.sync_guild_commands(application_id, os.getenv("DISCORD_TOKEN"))
+    return synced
+
+
+async def _sync_bub_slash_commands(client, tree):
     """
     Sync global slash commands and clear stale guild-scoped copies.
 
