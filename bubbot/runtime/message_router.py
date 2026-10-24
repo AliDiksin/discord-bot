@@ -20,7 +20,10 @@ from bubbot.data.aliases import (
     DP_PREFIX_EXCEPTIONS,
     INPUT_ALIASES,
 )
-from bubbot.features.reminders import ReminderManager
+try:
+    from bubbot.features.reminders import ReminderManager
+except ImportError:  # Bub's own deployment only; frame data runs without it (frame_only.py).
+    from bubbot.runtime.frame_only import FrameOnlyReminders as ReminderManager
 import bubbot.features.quiz as quiz_module
 import bubbot.frame_data.gif_lookup as gif_lookup_module
 import bubbot.frame_data.frame_output as frame_output_module
@@ -80,9 +83,12 @@ from bubbot.utils.text_utils import (
     remove_first_token_sequence,
     word_tokens,
 )
-from bubbot.runtime.buenavista_extension import buenavista_extension
+try:
+    from bubbot.runtime.buenavista_extension import buenavista_extension
+except ImportError:  # Bub's own deployment only; frame data runs without it (frame_only.py).
+    from bubbot.runtime.frame_only import buenavista_extension
 from collections import deque
-from bubbot.runtime import sfstats_bridge
+from bubbot.runtime import render_server, sfstats_bridge
 from bubbot.runtime.slash_commands import register_slash_commands
 from bubbot.runtime.startup import handle_ready
 
@@ -1444,6 +1450,8 @@ def check_punish(text_lower, results):
 reminder_task_handle = None
 _TYPING_DISABLED = False
 _DATA_LOADED = False
+# Set by bubbot.render_service: load game data only, never log in, sync commands or start schedulers.
+FRAME_ONLY = False
 reminder_manager = ReminderManager(
     client,
     truncate_message,
@@ -1619,6 +1627,7 @@ async def on_ready():
             "tree": tree,
             "reminder_manager": reminder_manager,
             "reminder_task_handle": reminder_task_handle,
+            "frame_only": FRAME_ONLY,
             "buenavista_extension": buenavista_extension,
             "load_frame_data": load_frame_data,
             "configure_extracted_modules": configure_extracted_modules,
@@ -1653,6 +1662,10 @@ async def on_ready():
     )
     _DATA_LOADED = True
     print("[startup] All game data loaded; message handling is now active.", flush=True)
+    try:
+        await render_server.start(client=client, handle_message=_handle_message, ready=lambda: _DATA_LOADED)
+    except Exception as render_error:
+        print(f"[bub-render] Not started: {type(render_error).__name__}: {render_error}", flush=True)
 
 @client.event
 async def on_message(message):
@@ -1683,7 +1696,9 @@ async def _handle_message(message):
 
     # SF Stats answers requests addressed to it and, when routing is on, the Bub mentions the
     # web app's Decisions call assigns to it. Everything else, and any failure, stays with Bub.
-    if await sfstats_bridge.claim_message(message, client):
+    # Rendering for SF Stats: the question already came from SF Stats, and only frame data answers.
+    rendering = render_server.rendering()
+    if not rendering and await sfstats_bridge.claim_message(message, client):
         return
 
     directly_mentions_bot = message_directly_mentions_bot(message)
@@ -1707,7 +1722,7 @@ async def _handle_message(message):
         return
 
     # Quiz beats frame lookup while a session is active (must be @bub or reply to quiz msg)
-    quiz_result = await quiz_module.route_message(client, message, content_lower)
+    quiz_result = False if rendering else await quiz_module.route_message(client, message, content_lower)
     if quiz_result is not False:
         return
 
@@ -1725,14 +1740,14 @@ async def _handle_message(message):
     ):
         return
 
-    if await buenavista_extension.maybe_handle_voice_command(
+    if not rendering and await buenavista_extension.maybe_handle_voice_command(
         client=client,
         message=message,
         content_lower=content_lower,
     ):
         return
 
-    if await buenavista_extension.maybe_handle_streetfighterdle_message(
+    if not rendering and await buenavista_extension.maybe_handle_streetfighterdle_message(
         client=client,
         message=message,
         content_lower=content_lower,
@@ -1742,7 +1757,8 @@ async def _handle_message(message):
     if await maybe_handle_glossary_lookup(message, content_no_mentions, addressed=directly_mentions_bot):
         return
 
-    await buenavista_extension.maybe_ack_streetfighterdle_score(message)
+    if not rendering:
+        await buenavista_extension.maybe_ack_streetfighterdle_score(message)
 
     if await _is_reply_to_suppressed_bub_message(message):
         return
@@ -1871,10 +1887,10 @@ async def _handle_message(message):
             return
 
     # User reminders (public) then BV catchphrase keyword replies
-    if await reminder_manager.handle_message(message, content_no_mentions, content_lower):
+    if not rendering and await reminder_manager.handle_message(message, content_no_mentions, content_lower):
         return
 
-    if await buenavista_extension.maybe_handle_private_message(
+    if not rendering and await buenavista_extension.maybe_handle_private_message(
         client=client,
         message=message,
         content_no_mentions=content_no_mentions,

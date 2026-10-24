@@ -28,28 +28,31 @@ async def handle_ready(deps):
     combo_data_module = deps["combo_data_module"]
     from bubbot.data.ggacr_aliases import GGACR_GAME_TERMS
 
-    print(f"Logged in as {client.user}")
-    try:
-        from bubbot.runtime.static_assets import start_static_asset_server
-
-        await start_static_asset_server()
-    except Exception as error:
-        print(f"[static-assets] startup error: {error}", flush=True)
-    try:
-        from bubbot.runtime.slash_commands import sync_public_slash_commands
-
-        await sync_public_slash_commands(client, tree)
-    except Exception as error:
-        print(f"[menu] Global slash command sync error: {error}", flush=True)
-
-    await buenavista_extension.start_background_tasks(client=client)
-
+    # The SF Stats frame-data helper (bubbot.render_service) never logs in: only the game data loads.
+    frame_only = deps.get("frame_only", False)
     reminder_task_handle = deps.get("reminder_task_handle")
-    if reminder_task_handle is None or reminder_task_handle.done():
-        reminder_task_handle = _asyncio.create_task(reminder_manager.reminder_loop())
-        print("Reminder loop task created.", flush=True)
+    if not frame_only:
+        print(f"Logged in as {client.user}")
+        try:
+            from bubbot.runtime.static_assets import start_static_asset_server
 
-    print("[runtime] Public framedata startup complete; private schedulers are owned by Buenavista.", flush=True)
+            await start_static_asset_server()
+        except Exception as error:
+            print(f"[static-assets] startup error: {error}", flush=True)
+        try:
+            from bubbot.runtime.slash_commands import sync_public_slash_commands
+
+            await sync_public_slash_commands(client, tree)
+        except Exception as error:
+            print(f"[menu] Global slash command sync error: {error}", flush=True)
+
+        await buenavista_extension.start_background_tasks(client=client)
+
+        if reminder_task_handle is None or reminder_task_handle.done():
+            reminder_task_handle = _asyncio.create_task(reminder_manager.reminder_loop())
+            print("Reminder loop task created.", flush=True)
+
+        print("[runtime] Public framedata startup complete; private schedulers are owned by Buenavista.", flush=True)
 
     def _load_all_game_data():
         load_frame_data()
