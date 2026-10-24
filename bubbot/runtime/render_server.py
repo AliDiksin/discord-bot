@@ -166,9 +166,9 @@ def _snowflake(value):
     return int(text) if text.isdigit() and 17 <= len(text) <= 20 else None
 
 
-def make_app(*, client, handle_message, secret, ready=lambda: True):
+def make_app(*, client, handle_message, secret, ready=lambda: True, version="dev"):
     async def health(_request):
-        return web.json_response({"ready": bool(ready())}, status=200 if ready() else 503)
+        return web.json_response({"ready": bool(ready()), "version": version}, status=200 if ready() else 503)
 
     async def render(request):
         if not _authorized(request, secret):
@@ -211,7 +211,7 @@ def make_app(*, client, handle_message, secret, ready=lambda: True):
     return app
 
 
-async def start(*, client, handle_message, ready=lambda: True):
+async def start(*, client, handle_message, ready=lambda: True, version="dev"):
     """Start once (on_ready runs again after reconnects); dormant without BUB_RENDER_PORT."""
     global _runner
     port = os.getenv("BUB_RENDER_PORT", "").strip()
@@ -222,7 +222,7 @@ async def start(*, client, handle_message, ready=lambda: True):
         print("[bub-render] Not started: SFSTATS_INTERNAL_SECRET is missing or short", flush=True)
         return None
     host = os.getenv("BUB_RENDER_HOST", "127.0.0.1").strip() or "127.0.0.1"
-    runner = web.AppRunner(make_app(client=client, handle_message=handle_message, secret=secret, ready=ready), access_log=None)
+    runner = web.AppRunner(make_app(client=client, handle_message=handle_message, secret=secret, ready=ready, version=version), access_log=None)
     await runner.setup()
     await web.TCPSite(runner, host, int(port)).start()
     _runner = runner

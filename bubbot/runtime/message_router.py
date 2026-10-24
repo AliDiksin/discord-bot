@@ -1452,6 +1452,8 @@ _TYPING_DISABLED = False
 _DATA_LOADED = False
 # Set by bubbot.render_service: load game data only, never log in, sync commands or start schedulers.
 FRAME_ONLY = False
+# The commit the SF Stats helper runs (its deploy writes VERSION), reported by /health.
+RENDER_VERSION = "dev"
 reminder_manager = ReminderManager(
     client,
     truncate_message,
@@ -1663,7 +1665,7 @@ async def on_ready():
     _DATA_LOADED = True
     print("[startup] All game data loaded; message handling is now active.", flush=True)
     try:
-        await render_server.start(client=client, handle_message=_handle_message, ready=lambda: _DATA_LOADED)
+        await render_server.start(client=client, handle_message=_handle_message, ready=lambda: _DATA_LOADED, version=RENDER_VERSION)
     except Exception as render_error:
         print(f"[bub-render] Not started: {type(render_error).__name__}: {render_error}", flush=True)
 

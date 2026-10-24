@@ -9,6 +9,7 @@ posts the answers itself. Quizzes, reminders, voice and chat never run here.
 
 import asyncio
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -25,6 +26,8 @@ async def serve():
     from bubbot.runtime import message_router
 
     message_router.FRAME_ONLY = True
+    version_file = Path("VERSION")
+    message_router.RENDER_VERSION = version_file.read_text().strip() if version_file.is_file() else "dev"
     # discord.Client.user reads the connection state; without a login there is none.
     message_router.client._connection.user = helper_user()
     if not os.getenv("BUB_RENDER_PORT", "").strip():
