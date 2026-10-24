@@ -6,7 +6,8 @@ which understands them (``src/lib/discord/nl``) and replies with the card the ma
 command shows. With ``SFSTATS_ROUTE_BUB_MENTIONS=true``, messages that @mention Bub are
 forwarded too, and the web app routes them: its Decisions call (OpenRouter) picks Bub or SF
 Stats. Bub answers whatever SF Stats doesn't confidently claim, and everything when the web
-app is slow, failing or unconfigured. Replies to Bub's own messages (its follow-up prompts)
+app is slow, failing or unconfigured. The reverse works too: a message to SF Stats that the web
+app hands back (``route: "bub"``, e.g. "@SF Stats ryu 5hp") is answered by Bub. Replies to Bub's own messages (its follow-up prompts)
 and unaddressed chat never leave the bot.
 
 ``claim`` is called at the top of Bub's on_message: True means SF Stats has the message and
@@ -217,10 +218,12 @@ async def claim(message, *, bot_user_id, application_id, session, bridge, config
                            timeout_seconds=config.route_timeout_seconds if kind == "bub" else config.timeout_seconds)
     failed = result.get("unavailable") or str(result.get("reason") or "").startswith("HTTP ")
     if kind == "sfstats":
-        # Addressed to SF Stats: Bub never answers it, even when the web app can't.
+        # Addressed to SF Stats: Bub answers only what the web app hands back to it ("@SF Stats
+        # ryu 5hp", with SFSTATS_ROUTE_TO_BUB on the web app); never when the web app can't answer.
         if failed:
             await report_unavailable(session, "message", result.get("reason"), message=payload)
-        return True
+            return True
+        return result.get("route") != "bub"
     # Addressed to Bub: SF Stats takes it only when the web app says so; otherwise Bub answers as always.
     if failed:
         await report_unavailable(session, "route", result.get("reason"))

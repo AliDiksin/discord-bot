@@ -132,6 +132,13 @@ class ClaimTests(unittest.TestCase):
         self.assertEqual((call["auth"].login, call["auth"].password), ("matar", "pw"))
         self.assertEqual(call["timeout"], 5.0)
 
+    def test_requests_to_sfstats_the_web_app_hands_back_are_bubs(self):
+        mention = message(f"<@{SFSTATS_USER}> ryu 5hp on block", mentions=[SFSTATS_USER])
+        self.assertFalse(claim(mention, FakeSession(FakeResponse(200, {"route": "bub", "handled": False, "reason": "routed"}))))
+        self.assertTrue(claim(mention, FakeSession(FakeResponse(200, {"route": "sfstats", "handled": True}))))
+        self.assertTrue(claim(mention, FakeSession(FakeResponse(200, {"handled": False, "reason": "throttled"}))),
+                        "only an explicit hand-back")
+
     def test_bub_mentions_go_to_whichever_bot_the_web_app_routes_them_to(self):
         mention = message(f"<@{BUB}> japan leaderbaord ryu", mentions=[BUB])
         session = FakeSession(FakeResponse(200, {"route": "sfstats", "handled": True}))
