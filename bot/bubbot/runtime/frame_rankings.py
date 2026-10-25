@@ -1,6 +1,7 @@
 """Rankings over Bub's frame data: "the move with the most range", "fastest normal", "Ken's most plus move on block".
 
-The Decisions API picks the game, then, in one request, the character (or all of them), the metric, which end of
+The game is Street Fighter 6 unless the message names another (decisions.pick_game). In one request the
+Decisions API then picks the character (or all of them), the metric, which end of
 the ranking, the move type, a trait (anti-air, projectile, air move) and how many moves, each from what that game's
 table actually has. The ranking itself is computed here from Bub's rows, so every number is Bub's.
 """
@@ -193,18 +194,9 @@ async def answer(text, *, games, session, tagged=(), config=None, label=None):
     """A Ranking, or None when any question is unsure, off or failing."""
     if not decisions.enabled(config) or not games:
         return None
-    by_key = {game.key: game for game in games}
-    chosen = [by_key[key] for key in tagged if key in by_key]
-    if len(chosen) != 1:
-        game_question = {"game": decisions.choice(
-            decisions.options([game.label for game in games], "No fighting game, or one Bub doesn't have."),
-            "Which fighting game's frame data does the request rank? Street Fighter 6 when no other game is named or implied "
-            "by its characters.")}
-        picked = decisions.sure(await decisions.decide(text, game_question, session=session, config=config, label="rank-game"), "game")
-        chosen = [game for game in games if game.label == picked]
-        if not chosen:
-            return None
-    game = chosen[0]
+    game = await decisions.pick_game(text, games, tagged, session=session, config=config, label="rank-game")
+    if game is None:
+        return None
     available = offer(game.frame_data)
     if not available.metrics:
         return None

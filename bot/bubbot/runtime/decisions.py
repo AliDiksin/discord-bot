@@ -25,8 +25,6 @@ DEFAULT_MODEL = "openai/gpt-6-luna-decisions"
 MAX_CHOICES = 255
 MAX_TEXT = 500
 NONE = "none"
-# Same bar as the web app (src/lib/discord/nl/parse.ts DECISION_CONFIDENCE).
-CONFIDENCE = 0.6
 
 ROUTES = {
     "framedata": "Frame data for a fighting game (Street Fighter 6, SFV, USF4, Third Strike, Guilty Gear Strive and +R, 2XKO, "
@@ -59,6 +57,11 @@ def _float(name, default):
         return float(os.getenv(name, default))
     except (TypeError, ValueError):
         return default
+
+
+# How sure an answer must be to act on it (it must also be the model's top choice, and never "none"). Lower than
+# the web app's 0.6: the options here are Bub's own lists, so a wrong pick is still real data, with a "Read as" line.
+CONFIDENCE = max(0.1, min(0.95, _float("DECISIONS_CONFIDENCE", 0.4)))
 
 
 def load_config():
@@ -120,6 +123,24 @@ def read_answers(body, questions):
         confidence = max(0.0, min(1.0, float(confidence))) if isinstance(confidence, (int, float)) else 0.0
         result[name] = (value, confidence)
     return result
+
+
+DEFAULT_GAME_KEY = "sf6"
+
+
+async def pick_game(text, games, tagged, *, session, config=None, label="game"):
+    """Street Fighter 6 unless the message names a game title (Bub's own tag detection). Only when it names more
+    than one ("guilty gear": Strive or +R) is the model asked, and only among those."""
+    by_key = {game.key: game for game in games}
+    named = [by_key[key] for key in tagged if key in by_key]
+    if len(named) == 1:
+        return named[0]
+    if not named:
+        return by_key.get(DEFAULT_GAME_KEY)
+    question = {"game": choice(options([game.label for game in named], "None of these games."),
+                               "Which of these fighting games does the request mean?")}
+    picked = sure(await decide(text, question, session=session, config=config, label=label), "game")
+    return next((game for game in named if game.label == picked), None)
 
 
 def sure(answers, name, minimum=CONFIDENCE):
