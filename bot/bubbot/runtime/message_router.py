@@ -43,7 +43,12 @@ import bubbot.frame_data.mk1_frame_data as mk1_module
 import bubbot.frame_data.avtl_frame_data as avtl_module
 import bubbot.frame_data.combo_data as combo_data_module
 import bubbot.features.menu_system as menu_system
-from bubbot.features.fg_glossary import build_glossary_definition_embed, build_glossary_link_view, normalize_glossary_term
+from bubbot.features.fg_glossary import (
+    build_glossary_definition_embed,
+    build_glossary_link_view,
+    glossary_question_term,
+    normalize_glossary_term,
+)
 from bubbot.frame_data.frame_output import (
     send_character_stats_response,
     send_frame_embeds_with_views,
@@ -362,7 +367,7 @@ def extract_glossary_lookup_term(text):
         match = re.match(pattern, cleaned, flags=re.IGNORECASE)
         if match:
             return normalize_glossary_term(match.group(1) or "")
-    return None
+    return glossary_question_term(cleaned)
 
 
 async def maybe_handle_glossary_lookup(message, content_no_mentions, *, addressed):
