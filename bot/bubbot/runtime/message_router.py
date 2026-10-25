@@ -101,8 +101,34 @@ from bubbot.runtime.startup import handle_ready
 _FRAME_DATA_RESPONSE_IDS = deque(maxlen=500)
 
 
+# Bub couldn't read the request ("I don't have the scrolls", the invalid-query notice): the Decisions API
+# gets one try first (frame_resolver), reading it into a game, character and move from Bub's tables.
+_RESOLVABLE_REASONS = frozenset({"missing_scrolls", "public_invalid_query"})
+
+
+async def _resolve_with_decisions(message):
+    if render_server.rendering() or not message_directly_mentions_bot(message):
+        return False
+    text = strip_discord_mentions(str(getattr(message, "content", "") or ""))
+    frame_resolver.configure(_frame_resolver_games())
+    return await frame_resolver.resolve_and_rerun(
+        message,
+        text,
+        rerun=_handle_message,
+        bot_user_id=getattr(client.user, "id", None),
+        session=sfstats_bridge._get_session(),
+        tagged=frame_resolver.tags_in(text.lower(), _cheap_explicit_frame_game_tags),
+    )
+
+
 # Reply helpers: log failed prompts, attach Report Issue, stamp frame-data ids for reports
 async def _reply_and_log_response(message, response_text, reason, **kwargs):
+    if reason in _RESOLVABLE_REASONS:
+        # Inside the try a miss stays silent, so the original message gets this reply instead.
+        if frame_resolver.resolving():
+            return None
+        if await _resolve_with_decisions(message):
+            return None
     view = kwargs.pop("view", None)
     if reason in FAILED_PROMPT_REASONS:
         if view is None:
@@ -3481,21 +3507,6 @@ async def _handle_message(message):
             return
 
     if frame_command_is_addressed and buenavista_extension.should_send_public_invalid_query_notice(message):
-        # A rewritten request that still misses: the original message gets the notice.
-        if frame_resolver.resolving():
-            return
-        # Last try before the notice: the Decisions API reads the request into a game, character and move.
-        if not rendering:
-            frame_resolver.configure(_frame_resolver_games())
-            if await frame_resolver.resolve_and_rerun(
-                message,
-                content_no_mentions,
-                rerun=_handle_message,
-                bot_user_id=getattr(client.user, "id", None),
-                session=sfstats_bridge._get_session(),
-                tagged=frame_resolver.tags_in(content_lower, _cheap_explicit_frame_game_tags),
-            ):
-                return
         await _reply_and_log_response(
             message,
             PUBLIC_INVALID_QUERY_TEXT,

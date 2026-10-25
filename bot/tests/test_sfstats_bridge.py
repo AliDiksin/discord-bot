@@ -251,6 +251,41 @@ class RegistrationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(slash_commands._activity_entry_enabled())
 
 
+class FrameFallbackTests(unittest.IsolatedAsyncioTestCase):
+    """Bub's "missing scrolls" and invalid-query replies give the Decisions fallback one try first."""
+
+    def message(self):
+        replies = []
+
+        async def reply(content=None, **kwargs):
+            replies.append(content)
+        return type("Message", (), {"content": "<@1> ryus medium punch", "reply": staticmethod(reply)})(), replies
+
+    async def test_a_resolved_request_replaces_the_reply(self):
+        msg, replies = self.message()
+        with (
+            patch.object(message_router, "message_directly_mentions_bot", lambda m: True),
+            patch.object(message_router.frame_resolver, "resolve_and_rerun", AsyncMock(return_value=True)) as rerun,
+        ):
+            self.assertIsNone(await message_router._reply_and_log_response(msg, message_router.MISSING_SCROLLS_TEXT, "missing_scrolls"))
+        self.assertEqual([], replies)
+        self.assertEqual("ryus medium punch", rerun.await_args.args[1].strip())
+
+    async def test_inside_the_try_a_miss_stays_silent(self):
+        msg, replies = self.message()
+        token = message_router.frame_resolver._RESOLVING.set(True)
+        try:
+            self.assertIsNone(await message_router._reply_and_log_response(msg, message_router.MISSING_SCROLLS_TEXT, "missing_scrolls"))
+        finally:
+            message_router.frame_resolver._RESOLVING.reset(token)
+        self.assertEqual([], replies)
+
+    async def test_other_replies_never_ask(self):
+        with patch.object(message_router.frame_resolver, "resolve_and_rerun", AsyncMock(return_value=True)) as rerun:
+            self.assertFalse(await message_router._resolve_with_decisions(type("M", (), {"content": "x", "mentions": [], "raw_mentions": []})()))
+        rerun.assert_not_awaited()
+
+
 class ConfigTests(unittest.TestCase):
     def test_environment_parsing(self):
         env = {"SFSTATS_BRIDGE_URL": " https://x/internal/discord/interactions ", "SFSTATS_INTERNAL_SECRET": "abc",
