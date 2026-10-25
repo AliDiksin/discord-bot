@@ -231,7 +231,8 @@ class RegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_rejected_activity_entry_retries_without_it_and_never_drops_sfstats_commands(self):
         tree = type("Tree", (), {"get_commands": lambda self: [], "sync": AsyncMock(return_value=[])})()
         client = type("Client", (), {"application_id": 123, "user": None})()
-        for results, expected in (([None, ["ok"]], ["ok"]), ([None, None], None)):
+        synced = [{"name": "sf6", "type": 1}]
+        for results, expected in (([None, synced], synced), ([None, None], None)):
             with self.subTest(results=results):
                 with (
                     patch.object(slash_commands, "_bulk_sync_global_commands_with_activity_entry", AsyncMock(side_effect=results)) as bulk,
