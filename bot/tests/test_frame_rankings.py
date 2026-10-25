@@ -33,7 +33,7 @@ GGST = Game("ggst", "Guilty Gear Strive", "ggst", {"sol": [row("Sol", f"Move {n}
 
 
 def scripted(**answers):
-    async def decide(text, questions, *, session, config=None, label="decide"):
+    async def decide(text, questions, *, session, config=None, label="decide", timeout_seconds=None):
         if label == "rank-game":
             return {"game": answers["game"]}
         return {name: answers[name] for name in questions if name in answers}

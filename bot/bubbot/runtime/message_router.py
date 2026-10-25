@@ -111,6 +111,15 @@ async def _resolve_with_decisions(message):
         return False
     if frame_resolver.throttled(str(getattr(getattr(message, "author", None), "id", ""))):
         return False
+    try:
+        async with message.channel.typing():
+            return await _resolve_with_decisions_now(message)
+    except (AttributeError, TypeError, discord.HTTPException):
+        # No typing indicator (a stand-in channel, or Discord refused it): answer without one.
+        return await _resolve_with_decisions_now(message)
+
+
+async def _resolve_with_decisions_now(message):
     text = strip_discord_mentions(str(getattr(message, "content", "") or ""))
     frame_resolver.configure(_frame_resolver_games())
     tagged = frame_resolver.tags_in(text.lower(), _cheap_explicit_frame_game_tags)

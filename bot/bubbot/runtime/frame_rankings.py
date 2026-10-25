@@ -200,7 +200,8 @@ async def answer(text, *, games, session, tagged=(), config=None, label=None):
     available = offer(game.frame_data)
     if not available.metrics:
         return None
-    answers = await decisions.decide(text, questions(game, available), session=session, config=config, label="rank")
+    answers = await decisions.decide(text, questions(game, available), session=session, config=config, label="rank",
+                                     timeout_seconds=5.0)
     metric, sort = decisions.sure(answers, "metric"), decisions.sure(answers, "sort")
     if metric not in available.metrics or sort not in SORTS:
         return None
