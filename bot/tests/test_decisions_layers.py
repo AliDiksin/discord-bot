@@ -88,6 +88,16 @@ class DecideTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({"model": "m", "state": "ken 5mp", "questions": self.QUESTIONS}, call["json"])
         self.assertEqual("none", next(iter(call["json"]["questions"]["route"]["criteria"])))
 
+    async def test_bigger_questions_may_wait_longer(self):
+        class Timed(Session):
+            def post(self, url, json=None, headers=None, auth=None, timeout=None):
+                self.timeouts = getattr(self, "timeouts", []) + [timeout.total]
+                return super().post(url, json=json, headers=headers)
+        session = Timed(Response(200, {}), Response(200, {}))
+        await decisions.decide("x", self.QUESTIONS, session=session, config=ON)
+        await decisions.decide("x", self.QUESTIONS, session=session, config=ON, timeout_seconds=5.0)
+        self.assertEqual([1.0, 5.0], session.timeouts)
+
     async def test_failures_and_unlisted_values_are_none(self):
         self.assertIsNone(await decisions.decide("x", self.QUESTIONS, session=Session(Response(500, {})), config=ON))
         self.assertIsNone(await decisions.decide("x", self.QUESTIONS, session=Session(asyncio.TimeoutError()), config=ON))
@@ -132,7 +142,7 @@ def configure():
 
 def scripted(**by_label):
     """A stand-in for decisions.decide that answers each layer from by_label (None for a failed request)."""
-    async def decide(text, questions, *, session, config=None, label="decide"):
+    async def decide(text, questions, *, session, config=None, label="decide", timeout_seconds=None):
         value = by_label.get(label.replace("frame-", ""))
         return None if value is None else {next(iter(questions)): value}
     return AsyncMock(side_effect=decide)

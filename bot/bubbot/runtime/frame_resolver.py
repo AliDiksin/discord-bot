@@ -103,7 +103,7 @@ async def resolve(text, *, session, tagged=(), config=None):
     questions = {"character": decisions.choice(
         decisions.options(_closest(sorted(characters), text, decisions.MAX_CHOICES - 1), "No character is named."),
         f"Which {game.label} character is the request about? Nicknames, short names and typos count.")}
-    answers = await decisions.decide(text, questions, session=session, config=config, label="frame-character")
+    answers = await decisions.decide(text, questions, session=session, config=config, label="frame-character", timeout_seconds=3.0)
     character = decisions.sure(answers, "character")
     if character not in characters:
         return None
@@ -119,7 +119,7 @@ async def resolve(text, *, session, tagged=(), config=None):
         f"Which of {character}'s moves in {game.label} does the request ask about? Plain words count: \"standing medium "
         "punch\" is 5MP, \"crouching heavy kick\" or \"sweep\" is 2HK, \"fireball\" is the projectile special, \"DP\" the "
         "uppercut special. Light, medium and heavy versions are different moves.")}
-    answers = await decisions.decide(text, questions, session=session, config=config, label="frame-move")
+    answers = await decisions.decide(text, questions, session=session, config=config, label="frame-move", timeout_seconds=3.0)
     move = decisions.sure(answers, "move")
     if move not in rows:
         return None

@@ -149,8 +149,9 @@ def sure(answers, name, minimum=CONFIDENCE):
     return value if value not in (None, NONE) and confidence >= minimum else None
 
 
-async def decide(text, questions, *, session, config=None, label="decide"):
-    """One request, or None when off, too slow or failing."""
+async def decide(text, questions, *, session, config=None, label="decide", timeout_seconds=None):
+    """One request, or None when off, too slow or failing. Bigger questions pass a longer timeout: message replies
+    have no 3-second deadline, only the route question sits in front of every message."""
     config = config or CONFIG
     text = request_text(text)
     if not config.enabled or not text or not questions:
@@ -162,7 +163,7 @@ async def decide(text, questions, *, session, config=None, label="decide"):
             config.url,
             json={"model": config.model, "state": text, "questions": questions},
             headers={"Authorization": f"Bearer {config.key}", "Content-Type": "application/json", "X-Title": "SF Stats"},
-            timeout=aiohttp.ClientTimeout(total=config.timeout_seconds),
+            timeout=aiohttp.ClientTimeout(total=max(config.timeout_seconds, timeout_seconds or 0)),
         ) as response:
             if response.status != 200:
                 outcome = f"HTTP {response.status}"
