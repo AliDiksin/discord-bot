@@ -29,3 +29,4 @@ jobs:
           python -m unittest discover -s tests -t tests -p 'test_render_service.py' -v
           python -m unittest discover -s tests -t tests -p 'test_sfstats_messages.py'
           python -m unittest discover -s tests -t tests -p 'test_sfstats_bridge.py'
+          python -m unittest discover -s tests -t tests -p 'test_decisions_layers.py' -v

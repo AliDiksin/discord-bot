@@ -22,6 +22,8 @@ from dataclasses import dataclass
 
 import aiohttp
 
+from bubbot.runtime import decisions
+
 
 PREFIX = re.compile(r"^\s*[!@.]?\s*sf\s*-?\s*stats\b", re.IGNORECASE)
 MENTION = re.compile(r"<@[!&]?\d{17,20}>")
@@ -213,7 +215,15 @@ async def claim(message, *, bot_user_id, application_id, session, bridge, config
         return False
     if allowed_guild_ids is not None and (not facts["guild_id"] or int(facts["guild_id"]) not in allowed_guild_ids):
         return False
+    # With a Decisions key the bot routes first (bubbot.runtime.decisions): frame data stays with Bub, and
+    # SF Stats data goes to the web app marked as routed, so it skips its own route question.
+    route = await decisions.route(facts["content"], session=session) if decisions.enabled() else None
+    if route == "framedata":
+        print(f"[sfstats-messages] addressed={kind} route=framedata (bot)", flush=True)
+        return False
     payload = forward_payload(facts, application_id=application_id, bot_user_id=bot_user_id, mention_ids=config.mention_ids, kind=kind)
+    if route == "sfstats":
+        payload["routed"] = "sfstats"
     result = await forward(payload, url=config.url, session=session, bridge=bridge,
                            timeout_seconds=config.route_timeout_seconds if kind == "bub" else config.timeout_seconds)
     failed = result.get("unavailable") or str(result.get("reason") or "").startswith("HTTP ")

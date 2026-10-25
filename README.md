@@ -12,6 +12,12 @@ The home of the **SF Stats** Discord bot. It has two parts:
 to `bot/.env`, fill it in, then run `python bot.py` from `bot/`. Without the
 `SFSTATS_*` settings it runs as plain Bub.
 
+With `DECISIONS_API_KEY` set, plain-language messages are understood in layers
+(`bot/bubbot/runtime/decisions.py`): first frame data or SF Stats data, then, for
+frame data Bub's parser can't read, the game, character and move from Bub's own
+tables (`frame_resolver.py`). The model only picks from those lists, so every
+answer is Bub's real data.
+
 Bub's LLM chatbot (voice, memory, reminders and Streetfighterdle) is becoming its
 own bot and is not part of `bot/`.
 
