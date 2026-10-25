@@ -88,7 +88,7 @@ try:
 except ImportError:  # Bub's own deployment only; frame data runs without it (frame_only.py).
     from bubbot.runtime.frame_only import buenavista_extension
 from collections import deque
-from bubbot.runtime import render_server, sfstats_bridge
+from bubbot.runtime import frame_resolver, render_server, sfstats_bridge
 from bubbot.runtime.slash_commands import register_slash_commands
 from bubbot.runtime.startup import handle_ready
 
@@ -1006,6 +1006,23 @@ def _selected_frame_parser_subset(content_lower, exact_matches):
     return None
 
 
+def _frame_resolver_games():
+    """Bub's games for the Decisions fallback: key, label, the tag its parser reads, and the live table."""
+    return [
+        ("sf6", "Street Fighter 6", "sf6", FRAME_DATA),
+        ("ggst", "Guilty Gear Strive", "ggst", ggst_module.GGST_FRAME_DATA),
+        ("sfv", "Street Fighter V", "sfv", sfv_module.SFV_FRAME_DATA),
+        ("tuco", "2XKO", "2xko", tuco_module.TUCO_FRAME_DATA),
+        ("bbcf", "BlazBlue Central Fiction", "bbcf", bbcf_module.BBCF_FRAME_DATA),
+        ("ggacr", "Guilty Gear XX Accent Core +R", "ggacr", ggacr_module.GGACR_FRAME_DATA),
+        ("cotw", "Fatal Fury: City of the Wolves", "cotw", cotw_module.COTW_FRAME_DATA),
+        ("third_strike", "Street Fighter III: 3rd Strike", "3s", third_strike_module.THIRD_STRIKE_FRAME_DATA),
+        ("usfiv", "Ultra Street Fighter IV", "usf4", usfiv_module.USFIV_FRAME_DATA),
+        ("mk1", "Mortal Kombat 1", "mk1", mk1_module.MK1_FRAME_DATA),
+        ("avtl", "Avatar Legends", "avtl", avtl_module.AVTL_FRAME_DATA),
+    ]
+
+
 def _empty_frame_payload():
     return {
         "mode": "none",
@@ -1700,7 +1717,7 @@ async def _handle_message(message):
     # web app's Decisions call assigns to it. Everything else, and any failure, stays with Bub.
     # Rendering for SF Stats: the question already came from SF Stats, and only frame data answers.
     rendering = render_server.rendering()
-    if not rendering and await sfstats_bridge.claim_message(message, client):
+    if not rendering and not frame_resolver.resolving() and await sfstats_bridge.claim_message(message, client):
         return
 
     directly_mentions_bot = message_directly_mentions_bot(message)
@@ -3459,6 +3476,21 @@ async def _handle_message(message):
             return
 
     if frame_command_is_addressed and buenavista_extension.should_send_public_invalid_query_notice(message):
+        # A rewritten request that still misses: the original message gets the notice.
+        if frame_resolver.resolving():
+            return
+        # Last try before the notice: the Decisions API reads the request into a game, character and move.
+        if not rendering:
+            frame_resolver.configure(_frame_resolver_games())
+            if await frame_resolver.resolve_and_rerun(
+                message,
+                content_no_mentions,
+                rerun=_handle_message,
+                bot_user_id=getattr(client.user, "id", None),
+                session=sfstats_bridge._get_session(),
+                tagged=frame_resolver.tags_in(content_lower, _cheap_explicit_frame_game_tags),
+            ):
+                return
         await _reply_and_log_response(
             message,
             PUBLIC_INVALID_QUERY_TEXT,
