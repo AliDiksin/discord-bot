@@ -1,0 +1,12 @@
+# The SF Stats frame-data helper (python -m bubbot.render_service): Bub's frame data without voice, chat or
+# reminders. Pinned to what runs on the SF Stats server (Python 3.13; pandas, numpy and aiohttp come from the
+# system there, discord.py and odfpy from /var/lib/gooseberry-essentials/sfstats/bub/venv). The hosted test
+# job installs exactly these, so a Bub PR is tested against the server's versions. Change a pin here and on
+# the server together (see discord/README.md, "Bub's helper").
+discord.py==2.7.1
+odfpy==1.4.1
+defusedxml==0.7.1
+pandas==3.0.2
+numpy==2.4.4
+aiohttp==3.11.16
+python-dotenv==1.2.2
