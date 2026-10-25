@@ -163,7 +163,8 @@ _FRAME_HINT = re.compile(
     r"\b(?:frame\s*data|frames?|startup|on\s*block|on\s*hit|recovery|hitbox(?:es)?|hurtbox(?:es)?|gifs?|combos?|"
     r"punish(?:es|able)?|cancell?able|define|definition|glossary|fgg|means?|meaning|terminology|"
     r"(?:standing|crouching|crouch|jumping|jump|close|far|light|medium|heavy|st|cr)\s+(?:punch|kick|slash)(?:es)?|"
-    r"sweep|fireballs?|hadou?kens?|shoryukens?|tatsus?|overheads?|anti[\s-]?airs?|reversals?|frame\s*traps?|[1-9]{1,4}(?:lp|mp|hp|lk|mk|hk|pp|kk|p|k|s|h|d|l|m)|(?:cr|st|cl|far|j)\.?\s?[lmh][pk])\b",
+    r"sweep|fireballs?|hadou?kens?|shoryukens?|tatsus?|overheads?|anti[\s-]?airs?|reversals?|frame\s*traps?|"
+    r"moves?|range|reach|damage|hitstun|blockstun|chip|drive\s+damage|super\s+gain|frame\s+advantage|[1-9]{1,4}(?:lp|mp|hp|lk|mk|hk|pp|kk|p|k|s|h|d|l|m)|(?:cr|st|cl|far|j)\.?\s?[lmh][pk])\b",
     re.IGNORECASE,
 )
 _SFSTATS_HINT = re.compile(

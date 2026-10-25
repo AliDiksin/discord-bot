@@ -265,6 +265,7 @@ class FrameFallbackTests(unittest.IsolatedAsyncioTestCase):
         msg, replies = self.message()
         with (
             patch.object(message_router, "message_directly_mentions_bot", lambda m: True),
+            patch.object(message_router.decisions, "enabled", lambda config=None: True),
             patch.object(message_router.frame_resolver, "resolve_and_rerun", AsyncMock(return_value=True)) as rerun,
         ):
             self.assertIsNone(await message_router._reply_and_log_response(msg, message_router.MISSING_SCROLLS_TEXT, "missing_scrolls"))

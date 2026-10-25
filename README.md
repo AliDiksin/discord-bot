@@ -17,6 +17,9 @@ With `DECISIONS_API_KEY` set, plain-language messages are understood in layers
 frame data Bub's parser can't read, the game, character and move from Bub's own
 tables (`frame_resolver.py`). The model only picks from those lists, so every
 answer is Bub's real data.
+Ranking questions ("the move with the most range", "fastest normal", "Ken's most
+plus move on block") are computed from the same tables (`frame_rankings.py`), by
+any metric the game's sheet fills.
 
 Bub's LLM chatbot (voice, memory, reminders and Streetfighterdle) is becoming its
 own bot and is not part of `bot/`.
