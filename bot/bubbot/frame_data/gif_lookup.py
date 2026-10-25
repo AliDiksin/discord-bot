@@ -133,10 +133,36 @@ def parse_local_hitbox_gif_filename(filename):
     return parsed
 
 
+def hitbox_gif_data_from_urls(character_lookup, urls=None):
+    """The hitbox gifs from the generated Ultimate Frame Data links alone, for hosts without sf6frames/:
+    the same rows the folder scan builds, keyed by the same file names, linking the hosted gifs."""
+    gif_data = {}
+    for (char_name, file_name), url in sorted((urls if urls is not None else SF6_UFD_GIF_URLS).items(),
+                                              key=lambda item: (item[0][0], item[0][1].lower())):
+        char_key = character_lookup.get(normalize_char_name(char_name))
+        parsed = parse_local_hitbox_gif_filename(file_name)
+        url = str(url or "").strip()
+        if not char_key or not parsed or not url:
+            continue
+        gif_data.setdefault(char_key, []).append(
+            {
+                "moveName": parsed["moveName"],
+                "numCmd": parsed["numCmd"],
+                "moveLink": url,
+                "localPath": "",
+                "sourceFile": file_name,
+                "drink_level": parsed.get("drink_level"),
+            }
+        )
+    return gif_data
+
+
 def load_local_hitbox_gif_data(character_lookup):
     gif_data = {}
     if not os.path.isdir(LOCAL_HITBOX_GIF_ROOT):
-        print(f"Local hitbox gif folder not found: {LOCAL_HITBOX_GIF_ROOT}")
+        gif_data = hitbox_gif_data_from_urls(character_lookup)
+        print(f"Local hitbox gif folder not found: {LOCAL_HITBOX_GIF_ROOT}; "
+              f"using {sum(len(rows) for rows in gif_data.values())} Ultimate Frame Data links")
         return gif_data
 
     for char_entry in sorted(os.scandir(LOCAL_HITBOX_GIF_ROOT), key=lambda entry: entry.name.lower()):

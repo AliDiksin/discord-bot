@@ -93,7 +93,7 @@ try:
 except ImportError:  # Bub's own deployment only; frame data runs without it (frame_only.py).
     from bubbot.runtime.frame_only import buenavista_extension
 from collections import deque
-from bubbot.runtime import frame_resolver, render_server, sfstats_bridge
+from bubbot.runtime import decisions, frame_rankings, frame_resolver, render_server, sfstats_bridge
 from bubbot.runtime.slash_commands import register_slash_commands
 from bubbot.runtime.startup import handle_ready
 
@@ -107,17 +107,30 @@ _RESOLVABLE_REASONS = frozenset({"missing_scrolls", "public_invalid_query"})
 
 
 async def _resolve_with_decisions(message):
-    if render_server.rendering() or not message_directly_mentions_bot(message):
+    if render_server.rendering() or not decisions.enabled() or not message_directly_mentions_bot(message):
+        return False
+    if frame_resolver.throttled(str(getattr(getattr(message, "author", None), "id", ""))):
         return False
     text = strip_discord_mentions(str(getattr(message, "content", "") or ""))
     frame_resolver.configure(_frame_resolver_games())
+    tagged = frame_resolver.tags_in(text.lower(), _cheap_explicit_frame_game_tags)
+    session = sfstats_bridge._get_session()
+    # "the move with the most range", "fastest normal": a ranking over Bub's tables, not one move.
+    if frame_rankings.is_ranking(text):
+        ranking = await frame_rankings.answer(text, games=frame_resolver.games(), session=session, tagged=tagged,
+                                              label=frame_resolver.move_label)
+        if ranking is not None and ranking.entries:
+            await message.reply(embed=frame_rankings.embed(ranking), mention_author=False)
+            print(f"[frame-rank] game={ranking.game.key} metric={ranking.metric} sort={ranking.sort} n={len(ranking.entries)}", flush=True)
+            return True
     return await frame_resolver.resolve_and_rerun(
         message,
         text,
         rerun=_handle_message,
         bot_user_id=getattr(client.user, "id", None),
-        session=sfstats_bridge._get_session(),
-        tagged=frame_resolver.tags_in(text.lower(), _cheap_explicit_frame_game_tags),
+        session=session,
+        tagged=tagged,
+        throttle=False,
     )
 
 

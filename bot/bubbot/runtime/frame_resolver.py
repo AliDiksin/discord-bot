@@ -49,6 +49,15 @@ def resolving():
     return _RESOLVING.get()
 
 
+def games():
+    return list(_GAMES.values())
+
+
+def throttled(user_id, now=None):
+    """One Decisions fallback per user every few seconds."""
+    return _throttled(user_id, now)
+
+
 def _throttled(user_id, now=None):
     now = time.monotonic() if now is None else now
     if len(_recent) > 5_000:
@@ -172,11 +181,11 @@ class Rephrased:
         return await self._message.reply(self._state.noted(content), **kwargs)
 
 
-async def resolve_and_rerun(message, text, *, rerun, bot_user_id, session, tagged=(), config=None):
+async def resolve_and_rerun(message, text, *, rerun, bot_user_id, session, tagged=(), config=None, throttle=True):
     """True when the rewritten request was answered; False leaves the message to Bub's notice."""
     if resolving() or not decisions.enabled(config) or not bot_user_id:
         return False
-    if _throttled(str(getattr(getattr(message, "author", None), "id", ""))):
+    if throttle and _throttled(str(getattr(getattr(message, "author", None), "id", ""))):
         return False
     resolution = await resolve(text, session=session, tagged=tagged, config=config)
     if resolution is None:
