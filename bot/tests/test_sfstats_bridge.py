@@ -228,6 +228,28 @@ class RegistrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["bub", "sfstats"], order)
         self.assertEqual((123, "bot-token"), guilds.await_args.args)
 
+    async def test_rejected_activity_entry_retries_without_it_and_never_drops_sfstats_commands(self):
+        tree = type("Tree", (), {"get_commands": lambda self: [], "sync": AsyncMock(return_value=[])})()
+        client = type("Client", (), {"application_id": 123, "user": None})()
+        synced = [{"name": "sf6", "type": 1}]
+        for results, expected in (([None, synced], synced), ([None, None], None)):
+            with self.subTest(results=results):
+                with (
+                    patch.object(slash_commands, "_bulk_sync_global_commands_with_activity_entry", AsyncMock(side_effect=results)) as bulk,
+                    patch.object(sfstats_bridge, "CONFIG", GLOBAL),
+                    patch.dict(os.environ, {"DISCORD_TOKEN": "bot-token"}),
+                ):
+                    self.assertEqual(expected, await slash_commands._sync_bub_slash_commands(client, tree))
+                self.assertEqual([True, False], [call.args[3] for call in bulk.await_args_list])
+        tree.sync.assert_not_awaited()
+
+    async def test_activity_entry_can_be_left_out(self):
+        with patch.dict(os.environ, {"STREETFIGHTERDLE_ACTIVITY_ENTRY": "false"}):
+            self.assertFalse(slash_commands._activity_entry_enabled())
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("STREETFIGHTERDLE_ACTIVITY_ENTRY", None)
+            self.assertTrue(slash_commands._activity_entry_enabled())
+
 
 class ConfigTests(unittest.TestCase):
     def test_environment_parsing(self):
