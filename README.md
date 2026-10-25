@@ -1,11 +1,30 @@
-# SF Stats Discord app
+# SF Stats Discord bot
 
-The open parts of the **SF Stats** Discord app: the slash command definitions and
-registration, the replay-queue 🔔 reaction gateway, the application emoji sync,
-and the interaction protocol (request signature verification and component ID
-format). Install the bot or try it at <https://sfstats.app/discord>.
+The home of the **SF Stats** Discord bot. It has two parts:
 
-> This is not the whole bot. Slash commands are **signed HTTP interactions**
+| Folder | What it is | Who runs it |
+| --- | --- | --- |
+| [`bot/`](bot/) | **The bot.** Bub (FrameBub), the frame-data bot for SF6, SFV, USF4, GGST, 2XKO, BBCF, GGACR, COTW, Third Strike, MK1 and AVTL, with its slash commands, `/bub` menus, buttons, images and quiz. It also carries SF Stats: `/cfn`, `/profile`, `/link`, leaderboards and their buttons are forwarded to sfstats.app, and `@SF Stats …` questions are routed between SF Stats and Bub by the site's Decisions check. | The FrameBub application, hosted by Bub's maintainer |
+| everything else | The original SF Stats app's open parts: command definitions, the replay-queue 🔔 reaction gateway, emoji sync and the interaction protocol. | The original SF Stats application, alongside sfstats.app |
+
+**Running the bot:** see [`bot/README.md`](bot/README.md). In short, install
+`bot/requirements.txt`, copy [`bot/.env.example`](bot/.env.example)
+to `bot/.env`, fill it in, then run `python bot.py` from `bot/`. Without the
+`SFSTATS_*` settings it runs as plain Bub.
+
+Bub's LLM chatbot (voice, memory, reminders and Streetfighterdle) is becoming its
+own bot and is not part of `bot/`.
+
+The rest of this page describes the original SF Stats app's parts.
+
+## SF Stats app parts
+
+The slash command definitions and registration, the replay-queue 🔔 reaction
+gateway, the application emoji sync, and the interaction protocol (request
+signature verification and component ID format). Install the bot or try it at
+<https://sfstats.app/discord>.
+
+> This is not the whole SF Stats backend. Slash commands are **signed HTTP interactions**
 > handled inside the sfstats.app backend, which reads the site's database
 > directly. Those handlers (the command router and the profile, leaderboard,
 > replay, vs, character, alias and setup views) are part of the private web
