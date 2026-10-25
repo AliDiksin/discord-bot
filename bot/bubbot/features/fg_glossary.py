@@ -76,6 +76,38 @@ def find_glossary_term(term):
     return _find_glossary_term(_GLOSSARY_TERMS, term)
 
 
+# Plain questions about a term. Only answered from the glossary when it has the term, so "what is ken 5mp"
+# still reaches frame data.
+_QUESTION_PATTERNS = (
+    r"^(?:what\s+does|what\s+do|wtf\s+does|wtf\s+is)\s+(?:a\s+|an\s+|the\s+)?(.+?)\s+mean\s*\??$",
+    r"^(?:what\s+is|what's|whats|what\s+are|wtf\s+is)\s+(?:a\s+|an\s+|the\s+)?(.+?)\s*\??$",
+    r"^(?:meaning\s+of|explain|explain\s+what)\s+(?:a\s+|an\s+|the\s+)?(.+?)\s*(?:is|means)?\s*\??$",
+)
+
+
+def glossary_question_term(text):
+    """The glossary term a plain question asks about ("what is a safe jump", "what does oki mean"), or None."""
+    cleaned = normalize_glossary_term(text)
+    for pattern in _QUESTION_PATTERNS:
+        match = re.match(pattern, cleaned, flags=re.IGNORECASE)
+        if match:
+            term = normalize_glossary_term(match.group(1))
+            if term and _exact_glossary_term(term):
+                return term
+    return None
+
+
+def _exact_glossary_term(query):
+    """A term or alternate name equal to the query (ignoring case, spaces and punctuation); never a partial
+    match, so "what's up" is not Getup and "what is ryu" is not Shoryuken."""
+    stripped = _strip_for_search(query)
+    for item in _GLOSSARY_TERMS or []:
+        names = [str(item.get("term", ""))] + [str(value) for value in item.get("altterm", []) or []]
+        if stripped and any(_strip_for_search(name) == stripped for name in names if name):
+            return item
+    return None
+
+
 def build_glossary_embed(term=None):
     normalized = normalize_glossary_term(term)
     url = glossary_url(normalized)

@@ -55,6 +55,9 @@ class LocalRouteTests(unittest.TestCase):
             "<@1556366213784010792> ken 5mp": "framedata",
             "sfstats what's jp's 236lp on block": "framedata",
             "sf stats ryu cr.mk startup": "framedata",
+            "<@1556366213784010792> ryus medium punch": "framedata",
+            "kens crouching heavy kick": "framedata",
+            "is ryu's fireball safe": "framedata",
             "<@1556366213784010792> my rank": "sfstats",
             "top 10 ken players in japan": "sfstats",
             "best ryu combo": None,          # both: ask
