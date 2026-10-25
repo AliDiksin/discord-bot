@@ -80,10 +80,9 @@ pip install -r requirements.txt
 ```
 
 ### Configuration
-Create a `.env` file:
-```
-DISCORD_TOKEN=your_bot_token_here
-```
+Copy `.env.example` to `.env` and fill it in. Only `DISCORD_TOKEN` is required;
+the `SFSTATS_*` settings connect the bot to [SF Stats](https://sfstats.app) and are
+explained in the file. Never commit `.env`.
 
 ### Running
 ```bash
