@@ -18,6 +18,11 @@ from bubbot.frame_data.sf6_character_stats import (
 from bubbot.utils.slash_frame_flow import send_slash_frame_result, send_slash_stats_result
 
 
+def _activity_entry_enabled():
+    """The Streetfighterdle launcher needs Activities enabled on the app; STREETFIGHTERDLE_ACTIVITY_ENTRY=false leaves it out."""
+    return os.getenv("STREETFIGHTERDLE_ACTIVITY_ENTRY", "true").strip().lower() not in {"0", "false", "no", "off"}
+
+
 def _env_int(name, default):
     try:
         return int(os.getenv(name, str(default)))
@@ -54,7 +59,7 @@ def _streetfighterdle_activity_entry_payload():
     }
 
 
-async def _bulk_sync_global_commands_with_activity_entry(client, tree, local_commands):
+async def _bulk_sync_global_commands_with_activity_entry(client, tree, local_commands, include_activity=True):
     application_id = _env_int("STREETFIGHTERDLE_ACTIVITY_APPLICATION_ID", 0)
     if not application_id:
         application_id = getattr(client, "application_id", None) or getattr(getattr(client, "user", None), "id", None)
@@ -66,7 +71,8 @@ async def _bulk_sync_global_commands_with_activity_entry(client, tree, local_com
     payload = [command for command in payload if int(command.get("type", 1) or 1) != 4]
     # SF Stats commands join the global set only at cutover (SFSTATS_COMMANDS_GLOBAL).
     payload = sfstats_bridge.merge_global_commands(payload)
-    payload.append(_streetfighterdle_activity_entry_payload())
+    if include_activity:
+        payload.append(_streetfighterdle_activity_entry_payload())
     url = f"https://discord.com/api/v10/applications/{application_id}/commands"
     headers = {"Authorization": f"Bot {token}", "Content-Type": "application/json"}
     async with aiohttp.ClientSession() as session:
@@ -905,7 +911,11 @@ async def _sync_bub_slash_commands(client, tree):
         await tree.sync(guild=guild_obj)
         print(f"[menu] Cleared guild-scoped slash commands for guild {guild_id}", flush=True)
 
-    raw_synced = await _bulk_sync_global_commands_with_activity_entry(client, tree, local_commands)
+    include_activity = _activity_entry_enabled()
+    raw_synced = await _bulk_sync_global_commands_with_activity_entry(client, tree, local_commands, include_activity)
+    if raw_synced is None and include_activity:
+        # An app without Activities rejects the launcher, and with it the whole list: retry without it.
+        raw_synced = await _bulk_sync_global_commands_with_activity_entry(client, tree, local_commands, False)
     if raw_synced is not None:
         synced_names = sorted(
             f"{command.get('name')}" + (" (activity)" if int(command.get("type", 1) or 1) == 4 else "")
@@ -919,6 +929,10 @@ async def _sync_bub_slash_commands(client, tree):
         )
         return raw_synced
 
+    if sfstats_bridge.enabled() and sfstats_bridge.CONFIG.global_commands:
+        # tree.sync() would replace the global list with Bub's commands alone and delete SF Stats'.
+        print("[menu] Global command sync failed; leaving the registered commands as they are", flush=True)
+        return None
     await _delete_streetfighterdle_activity_entry_command(client)
     synced = await tree.sync()
     synced_names = sorted(cmd.name for cmd in synced)
@@ -929,5 +943,6 @@ async def _sync_bub_slash_commands(client, tree):
     )
     if len(synced_names) != len(set(synced_names)):
         print("[menu] WARNING: Discord sync returned duplicate command names", flush=True)
-    await _register_streetfighterdle_activity_entry_command(client)
+    if include_activity:
+        await _register_streetfighterdle_activity_entry_command(client)
     return synced
