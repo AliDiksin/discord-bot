@@ -91,14 +91,14 @@ class RankTests(unittest.TestCase):
 
 
 class AnswerTests(unittest.IsolatedAsyncioTestCase):
-    async def test_the_game_then_one_request_for_the_rest(self):
-        decide = scripted(game=("Street Fighter 6", 0.9), metric=("range", 0.9), sort=("desc", 0.9), count=("1 move", 0.8),
+    async def test_street_fighter_6_by_default_in_one_request(self):
+        decide = scripted(metric=("range", 0.9), sort=("desc", 0.9), count=("1 move", 0.8),
                           character=("none", 0.95), kind=("none", 0.9), trait=("none", 0.9))
         with patch.object(decisions, "decide", decide):
             ranking = await frame_rankings.answer("give me the move with the most range", games=[SF6, GGST], session=None, config=ON)
         self.assertEqual([("JP", "Torbalan", 5.0)], [entry[:3] for entry in ranking.entries])
-        self.assertEqual(["rank-game", "rank"], [call.kwargs["label"] for call in decide.await_args_list])
-        asked = decide.await_args_list[1].args[1]
+        self.assertEqual(["rank"], [call.kwargs["label"] for call in decide.await_args_list])
+        asked = decide.await_args_list[0].args[1]
         self.assertEqual(["none", "startup", "onBlock", "dmg", "range"], list(asked["metric"]["criteria"]))
         self.assertEqual("none", next(iter(asked["character"]["criteria"])))
 

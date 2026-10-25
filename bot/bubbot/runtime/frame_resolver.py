@@ -2,8 +2,9 @@
 character and move from Bub's own tables, and Bub answers the rewritten request ("ggst sol 5H") as if
 it had been typed, with its usual cards, buttons and images, plus a "Read as" line.
 
-Called from Bub's last step, just before the invalid-query notice. One to three small requests (the
-game is skipped when the message names it); anything unsure, slow or failing leaves the notice as it was.
+Called when Bub can't read a request. The game is Street Fighter 6 unless the message names another
+(decisions.pick_game); then two small requests pick the character and the move. Anything unsure, slow
+or failing leaves Bub's reply as it was.
 """
 
 import contextvars
@@ -92,18 +93,9 @@ async def resolve(text, *, session, tagged=(), config=None):
     """A Resolution, or None when any layer is unsure, off or failing."""
     if not decisions.enabled(config) or not _GAMES:
         return None
-    games = [_GAMES[key] for key in tagged if key in _GAMES]
-    if len(games) != 1:
-        questions = {"game": decisions.choice(
-            decisions.options([game.label for game in _GAMES.values()], "No fighting game, or one Bub doesn't have."),
-            "Which fighting game is this frame data request about? Street Fighter 6 when a Street Fighter 6 character is "
-            "named and no other game is.")}
-        answers = await decisions.decide(text, questions, session=session, config=config, label="frame-game")
-        label = decisions.sure(answers, "game")
-        games = [game for game in _GAMES.values() if game.label == label]
-        if not games:
-            return None
-    game = games[0]
+    game = await decisions.pick_game(text, list(_GAMES.values()), tagged, session=session, config=config, label="frame-game")
+    if game is None:
+        return None
 
     characters = {display: key for key, display in character_choices({k: v for k, v in game.frame_data.items() if v})}
     if not characters:

@@ -99,7 +99,8 @@ class DecideTests(unittest.IsolatedAsyncioTestCase):
 
     def test_sure_needs_confidence_and_a_real_value(self):
         self.assertEqual("sfstats", decisions.sure({"route": ("sfstats", 0.8)}, "route"))
-        self.assertIsNone(decisions.sure({"route": ("sfstats", 0.4)}, "route"))
+        self.assertEqual("sfstats", decisions.sure({"route": ("sfstats", 0.45)}, "route"))
+        self.assertIsNone(decisions.sure({"route": ("sfstats", 0.3)}, "route"))
         self.assertIsNone(decisions.sure({"route": ("none", 0.99)}, "route"))
         self.assertIsNone(decisions.sure(None, "route"))
 
@@ -141,21 +142,34 @@ class ResolveTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         configure()
 
-    async def test_game_character_and_move_become_a_query_bub_reads(self):
-        decide = scripted(game=("Guilty Gear Strive", 0.9), character=("Sol", 0.95), move=("Heavy Slash (5H)", 0.8))
+    async def test_a_named_game_character_and_move_become_a_query_bub_reads(self):
+        decide = scripted(character=("Sol", 0.95), move=("Heavy Slash (5H)", 0.8))
         with patch.object(decisions, "decide", decide):
-            result = await frame_resolver.resolve("sol's big slash", session=None, config=ON)
+            result = await frame_resolver.resolve("strive sol's big slash", session=None, tagged=("ggst",), config=ON)
         self.assertEqual("ggst Sol 5H", result.query)
-        self.assertEqual(["frame-game", "frame-character", "frame-move"], [c.kwargs["label"] for c in decide.await_args_list])
-        moves = decide.await_args_list[2].args[1]["move"]["criteria"]
+        self.assertEqual(["frame-character", "frame-move"], [c.kwargs["label"] for c in decide.await_args_list])
+        moves = decide.await_args_list[1].args[1]["move"]["criteria"]
         self.assertEqual(["none", "Far Slash (f.S)", "Heavy Slash (5H)"], list(moves))
 
-    async def test_a_named_game_skips_the_game_question(self):
-        decide = scripted(character=("Ken", 0.9), move=("Medium Punch (5MP)", 0.9))
+    async def test_street_fighter_6_unless_a_game_is_named(self):
+        for tagged in ((), ("sf6",)):
+            decide = scripted(character=("Ken", 0.9), move=("Medium Punch (5MP)", 0.9))
+            with self.subTest(tagged=tagged), patch.object(decisions, "decide", decide):
+                result = await frame_resolver.resolve("kens standing mp", session=None, tagged=tagged, config=ON)
+            self.assertEqual("sf6 Ken 5MP", result.query)
+            self.assertEqual(2, decide.await_count, "no game question")
+
+    async def test_two_named_games_ask_only_between_them(self):
+        games = [frame_resolver.Game("sf6", "Street Fighter 6", "sf6", SF6), frame_resolver.Game("ggst", "Guilty Gear Strive", "ggst", ROWS),
+                 frame_resolver.Game("ggacr", "Guilty Gear XX Accent Core +R", "ggacr", ROWS)]
+        decide = scripted(game=("Guilty Gear Strive", 0.9))
         with patch.object(decisions, "decide", decide):
-            result = await frame_resolver.resolve("kens standing mp", session=None, tagged=("sf6",), config=ON)
-        self.assertEqual("sf6 Ken 5MP", result.query)
-        self.assertEqual(2, decide.await_count)
+            game = await decisions.pick_game("guilty gear sol", games, ("ggacr", "ggst"), session=None, config=ON, label="frame-game")
+        self.assertEqual("ggst", game.key)
+        self.assertEqual(["none", "Guilty Gear XX Accent Core +R", "Guilty Gear Strive"],
+                         list(decide.await_args.args[1]["game"]["criteria"]))
+        with patch.object(decisions, "decide", scripted(game=("Guilty Gear Strive", 0.3))):
+            self.assertIsNone(await decisions.pick_game("guilty gear sol", games, ("ggacr", "ggst"), session=None, config=ON))
 
     async def test_any_unsure_layer_gives_up(self):
         for by_label in ({"game": ("Guilty Gear Strive", 0.3)},
@@ -188,7 +202,7 @@ class RerunTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         configure()
         frame_resolver._recent.clear()
-        self.decide = scripted(game=("Guilty Gear Strive", 0.9), character=("Sol", 0.9), move=("Heavy Slash (5H)", 0.9))
+        self.decide = scripted(character=("Sol", 0.9), move=("Heavy Slash (5H)", 0.9))
 
     async def test_the_rewritten_request_answers_with_a_read_as_line(self):
         seen = {}
@@ -199,8 +213,8 @@ class RerunTests(unittest.IsolatedAsyncioTestCase):
             await proxy.channel.send(embed="second card")
         msg = original()
         with patch.object(decisions, "decide", self.decide):
-            self.assertTrue(await frame_resolver.resolve_and_rerun(msg, "sols big slash", rerun=rerun, bot_user_id=1,
-                                                                   session=None, config=ON))
+            self.assertTrue(await frame_resolver.resolve_and_rerun(msg, "ggst sols big slash", rerun=rerun, bot_user_id=1,
+                                                                   session=None, tagged=("ggst",), config=ON))
         self.assertEqual({"content": "<@1> ggst Sol 5H", "resolving": True}, seen)
         self.assertFalse(frame_resolver.resolving())
         self.assertEqual([("-# Read as **Sol** · Heavy Slash (5H) (Guilty Gear Strive)", {"embed": "card"}),
@@ -210,10 +224,12 @@ class RerunTests(unittest.IsolatedAsyncioTestCase):
         async def silent(proxy):
             return None
         with patch.object(decisions, "decide", self.decide):
-            self.assertFalse(await frame_resolver.resolve_and_rerun(original(), "x", rerun=silent, bot_user_id=1, session=None, config=ON))
+            self.assertFalse(await frame_resolver.resolve_and_rerun(original(), "x", rerun=silent, bot_user_id=1, session=None,
+                                                                    tagged=("ggst",), config=ON))
             # Same user again within the throttle window: no requests at all.
-            self.assertFalse(await frame_resolver.resolve_and_rerun(original(), "x", rerun=silent, bot_user_id=1, session=None, config=ON))
-        self.assertEqual(3, self.decide.await_count)
+            self.assertFalse(await frame_resolver.resolve_and_rerun(original(), "x", rerun=silent, bot_user_id=1, session=None,
+                                                                    tagged=("ggst",), config=ON))
+        self.assertEqual(2, self.decide.await_count)
 
 
 class ClaimRoutingTests(unittest.IsolatedAsyncioTestCase):
