@@ -64,12 +64,9 @@ from bubbot.runtime.config import (
     RANGE_MISSING_PLACEHOLDERS,
     MISSING_SCROLLS_TEXT,
     PUBLIC_INVALID_QUERY_TEXT,
+    MISSING_SCROLLS_HINT,
     RANGE_SCROLLS_MISSING_TEXT,
     TOKEN,
-)
-from bubbot.features.failed_prompt_report import (
-    attach_failed_prompt_report_button,
-    build_failed_prompt_report_view,
 )
 from bubbot.utils.character_lookup import find_aliases_in_text, resolve_alias_key, text_mentions_alias
 from bubbot.utils.response_log import (
@@ -93,6 +90,7 @@ try:
 except ImportError:  # Bub's own deployment only; frame data runs without it (frame_only.py).
     from bubbot.runtime.frame_only import buenavista_extension
 from collections import deque
+from bubbot.features.failure_card import FailureCard
 from bubbot.runtime import decisions, frame_rankings, frame_resolver, render_server, sfstats_bridge
 from bubbot.runtime.slash_commands import register_slash_commands
 from bubbot.runtime.startup import handle_ready
@@ -157,21 +155,12 @@ async def _reply_and_log_response(message, response_text, reason, **kwargs):
                 and await sfstats_bridge.hand_over_message(message, client)):
             return None
     view = kwargs.pop("view", None)
-    if reason in FAILED_PROMPT_REASONS:
-        if view is None:
-            view = build_failed_prompt_report_view(
-                message,
-                bub_response_text=response_text,
-                failure_reason=reason,
-            )
-        else:
-            attach_failed_prompt_report_button(
-                view,
-                message,
-                bub_response_text=response_text,
-                failure_reason=reason,
-            )
-    sent = await message.reply(response_text, view=view, **kwargs)
+    if reason in FAILED_PROMPT_REASONS and view is None:
+        # The plain card, like SF Stats' notices; the report channel gets the failure either way (below).
+        hint = MISSING_SCROLLS_HINT if reason in _RESOLVABLE_REASONS else None
+        sent = await message.reply(view=FailureCard(response_text, hint), **kwargs)
+    else:
+        sent = await message.reply(response_text, view=view, **kwargs)
     for child in getattr(view, "children", []) or []:
         report_context = getattr(child, "report_context", None)
         if isinstance(report_context, dict):

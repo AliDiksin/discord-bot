@@ -235,8 +235,8 @@ class RerunTests(unittest.IsolatedAsyncioTestCase):
                                                                    session=None, tagged=("ggst",), config=ON))
         self.assertEqual({"content": "<@1> ggst Sol 5H", "resolving": True}, seen)
         self.assertFalse(frame_resolver.resolving())
-        self.assertEqual([("-# Read as **Sol** · Heavy Slash (5H) (Guilty Gear Strive)", {"embed": "card"}),
-                          (None, {"embed": "second card"})], msg.channel.sent)
+        self.assertEqual([(None, {"embed": "card"}), (None, {"embed": "second card"})], msg.channel.sent,
+                         "Bub's own cards, without a \"Read as\" line")
 
     async def test_no_answer_leaves_the_notice_and_users_are_throttled(self):
         async def silent(proxy):

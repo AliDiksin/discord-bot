@@ -60,7 +60,7 @@ def _float(name, default):
 
 
 # How sure an answer must be to act on it (it must also be the model's top choice, and never "none"). Lower than
-# the web app's 0.6: the options here are Bub's own lists, so a wrong pick is still real data, with a "Read as" line.
+# the web app's 0.6: the options here are Bub's own lists, so a wrong pick is still real data, and its card names the move.
 CONFIDENCE = max(0.1, min(0.95, _float("DECISIONS_CONFIDENCE", 0.4)))
 
 

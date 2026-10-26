@@ -1,6 +1,6 @@
 """Layer 2 for frame data: when Bub's parser can't read a request, the Decisions API picks the game,
 character and move from Bub's own tables, and Bub answers the rewritten request ("ggst sol 5H") as if
-it had been typed, with its usual cards, buttons and images, plus a "Read as" line.
+it had been typed, with its usual cards, buttons and images (the card itself names the character and move).
 
 Called when Bub can't read a request. The game is Street Fighter 6 unless the message names another
 (decisions.pick_game); then two small requests pick the character and the move. Anything unsure, slow
@@ -128,7 +128,7 @@ async def resolve(text, *, session, tagged=(), config=None):
 
 
 class _NotedChannel:
-    """The real channel, with the "Read as" line added to the first message sent."""
+    """The real channel; notes whether the rewritten request was answered."""
 
     def __init__(self, channel, state):
         self._channel = channel
@@ -148,7 +148,7 @@ class _NoteState:
 
     def noted(self, content):
         first, self.sent = not self.sent, True
-        if not first:
+        if not first or not self.note:
             return content
         return self.note if not content else f"{self.note}\n{content}"[:2000]
 
@@ -183,8 +183,8 @@ async def resolve_and_rerun(message, text, *, rerun, bot_user_id, session, tagge
     if resolution is None:
         print("[frame-resolve] unresolved", flush=True)
         return False
-    note = f"-# Read as **{resolution.character}** · {resolution.move} ({resolution.game.label})"
-    proxy = Rephrased(message, f"<@{bot_user_id}> {resolution.query}", note)
+    # No "Read as" line: the card's title already says which character and move it is.
+    proxy = Rephrased(message, f"<@{bot_user_id}> {resolution.query}", None)
     token = _RESOLVING.set(True)
     try:
         await rerun(proxy)
