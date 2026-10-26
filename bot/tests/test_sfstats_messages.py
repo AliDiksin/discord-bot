@@ -196,3 +196,25 @@ class ClaimTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HandOverTests(unittest.TestCase):
+    """Bub and the frame resolver both failed: SF Stats answers messages addressed to it."""
+
+    def hand_over(self, msg, session, config=ROUTING):
+        return asyncio.run(sfstats_messages.hand_over(msg, bot_user_id=BUB, application_id=APP, session=session, bridge=Bridge(),
+                                                      config=config))
+
+    def test_a_message_to_sf_stats_goes_to_the_web_app_as_routed(self):
+        session = FakeSession(FakeResponse(200, {"route": "sfstats", "handled": True, "intent": "custom"}))
+        self.assertTrue(self.hand_over(message(f"<@{SFSTATS_USER}> who's my nemesis", mentions=[SFSTATS_USER]), session))
+        self.assertEqual(session.calls[0]["json"]["routed"], "sfstats")
+
+    def test_unanswered_failing_or_bub_messages_stay_with_bub(self):
+        to_sfstats = message(f"<@{SFSTATS_USER}> most indian character", mentions=[SFSTATS_USER])
+        self.assertFalse(self.hand_over(to_sfstats, FakeSession(FakeResponse(200, {"handled": False, "reason": "seen"}))))
+        self.assertFalse(self.hand_over(to_sfstats, FakeSession(RuntimeError("down"))))
+        session = FakeSession()
+        self.assertFalse(self.hand_over(message(f"<@{BUB}> most indian character", mentions=[BUB]), session))
+        self.assertEqual(session.calls, [], "Bub's own mentions never leave the bot")
+

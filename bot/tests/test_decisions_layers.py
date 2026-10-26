@@ -58,6 +58,14 @@ class LocalRouteTests(unittest.TestCase):
             "<@1556366213784010792> ryus medium punch": "framedata",
             "kens crouching heavy kick": "framedata",
             "is ryu's fireball safe": "framedata",
+            # From the channels: buttons, grabs and forward/back notation are moves; nemesis, hours and servers are stats.
+            "jp air grab?": "framedata",
+            "kens forward hk": "framedata",
+            "terry longest range button": "framedata",
+            "who's my nemesis": "sfstats",
+            "what hours do i play the most": "sfstats",
+            "server ladder pls": "sfstats",
+            "chun lee best poke button": None,  # both: ask
             "<@1556366213784010792> my rank": "sfstats",
             "top 10 ken players in japan": "sfstats",
             "best ryu combo": None,          # both: ask
