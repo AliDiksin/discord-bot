@@ -281,6 +281,29 @@ class FrameFallbackTests(unittest.IsolatedAsyncioTestCase):
             message_router.frame_resolver._RESOLVING.reset(token)
         self.assertEqual([], replies)
 
+    async def test_an_unread_request_gets_the_plain_card_without_buttons(self):
+        sent = []
+
+        async def reply(content=None, **kwargs):
+            sent.append((content, kwargs))
+        msg = type("Message", (), {"content": "<@1> jp jumping grab", "reply": staticmethod(reply)})()
+        with (
+            patch.object(message_router.decisions, "enabled", lambda config=None: False),
+            patch.object(message_router.sfstats_bridge, "hand_over_message", AsyncMock(return_value=False)),
+            patch.object(message_router, "notify_owner", AsyncMock()),
+        ):
+            await message_router._reply_and_log_response(msg, message_router.MISSING_SCROLLS_TEXT, "missing_scrolls")
+        [(content, kwargs)] = sent
+        self.assertIsNone(content)
+        card = kwargs["view"]
+        self.assertIsInstance(card, discord.ui.LayoutView)
+        [container] = card.children
+        self.assertEqual(0x0B0B0B, container.accent_colour.value)
+        text = container.children[0].content
+        self.assertTrue(text.startswith("I couldn't find that move.\n-# Try a character and a move"), text)
+        self.assertNotIn("Report Issue", text)
+        self.assertFalse([item for item in card.walk_children() if isinstance(item, discord.ui.Button)], "no buttons")
+
     async def test_other_replies_never_ask(self):
         with patch.object(message_router.frame_resolver, "resolve_and_rerun", AsyncMock(return_value=True)) as rerun:
             self.assertFalse(await message_router._resolve_with_decisions(type("M", (), {"content": "x", "mentions": [], "raw_mentions": []})()))
