@@ -186,12 +186,16 @@ _FRAME_HINT = re.compile(
     r"punish(?:es|able)?|cancell?able|define|definition|glossary|fgg|means?|meaning|terminology|"
     r"(?:standing|crouching|crouch|jumping|jump|close|far|light|medium|heavy|st|cr)\s+(?:punch|kick|slash)(?:es)?|"
     r"sweep|fireballs?|hadou?kens?|shoryukens?|tatsus?|overheads?|anti[\s-]?airs?|reversals?|frame\s*traps?|"
-    r"moves?|range|reach|damage|hitstun|blockstun|chip|drive\s+damage|super\s+gain|frame\s+advantage|[1-9]{1,4}(?:lp|mp|hp|lk|mk|hk|pp|kk|p|k|s|h|d|l|m)|(?:cr|st|cl|far|j)\.?\s?[lmh][pk])\b",
+    r"moves?|buttons?|pokes?|normals?|specials?|grabs?|throws?|command\s+grabs?|air\s+(?:grabs?|throws?)|"
+    r"(?:jumping|crouching|standing)\s+\w+|(?:forward|back|neutral|down|close|far)\s+(?:[lmh][pk]|(?:light|medium|heavy)\s+(?:punch|kick))|"
+    r"mp|hp|lk|mk|hk|"
+    r"range|reach|damage|hitstun|blockstun|chip|drive\s+damage|super\s+gain|frame\s+advantage|[1-9]{1,4}(?:lp|mp|hp|lk|mk|hk|pp|kk|p|k|s|h|d|l|m)|(?:cr|st|cl|far|j)\.?\s?[lmh][pk])\b",
     re.IGNORECASE,
 )
 _SFSTATS_HINT = re.compile(
     r"\b(?:rank(?:ed|s)?|lp|mr|leaderboards?|profile|cfn|replays?|queue|win\s*rates?|matchups?|top\s*\d+|best|"
-    r"link(?:ed)?|elo|my\s+stats|vs\.?\s+@)\b",
+    r"link(?:ed)?|elo|my\s+stats|vs\.?\s+@|nemesis|streaks?|peak|grind(?:s|ing)?|ladder|server|hours?|days|"
+    r"how\s+often|who\s+(?:is|are)\s+the\s+best)\b",
     re.IGNORECASE,
 )
 

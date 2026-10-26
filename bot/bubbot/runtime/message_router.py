@@ -151,6 +151,11 @@ async def _reply_and_log_response(message, response_text, reason, **kwargs):
             return None
         if await _resolve_with_decisions(message):
             return None
+        # Nothing in it reads as a move ("who's my nemesis", "most indian character"): SF Stats answers instead.
+        text = strip_discord_mentions(str(getattr(message, "content", "") or ""))
+        if (not render_server.rendering() and decisions.local_route(text) != "framedata"
+                and await sfstats_bridge.hand_over_message(message, client)):
+            return None
     view = kwargs.pop("view", None)
     if reason in FAILED_PROMPT_REASONS:
         if view is None:
@@ -1798,7 +1803,7 @@ async def _handle_message(message):
     if quiz_result is not False:
         return
 
-    if "bosch breakdance" in content_lower:
+    if directly_mentions_bot and "bosch breakdance" in content_lower:
         await message.reply(_BOSCH_BREAKDANCE_VIDEO_URL)
         return
 

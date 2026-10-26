@@ -231,6 +231,21 @@ async def claim_message(message, client, *, config=None, messages=None):
         return False
 
 
+async def hand_over_message(message, client, *, config=None, messages=None):
+    """After Bub and the frame resolver both failed: True when SF Stats answered instead. See ``sfstats_messages.hand_over``."""
+    config = config or CONFIG
+    messages = messages or MESSAGES
+    if not enabled(config) or not messages.enabled:
+        return False
+    try:
+        return await sfstats_messages.hand_over(
+            message, bot_user_id=getattr(getattr(client, "user", None), "id", None),
+            application_id=getattr(client, "application_id", None), session=_get_session(), bridge=config, config=messages)
+    except Exception as error:
+        print(f"[sfstats-messages] Hand-over failed: {type(error).__name__}", flush=True)
+        return False
+
+
 def install_tree_error_filter(tree):
     """Keep discord.py from logging "command not found" for commands the web app answers."""
     default_on_error = tree.on_error

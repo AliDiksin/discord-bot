@@ -238,3 +238,18 @@ async def claim(message, *, bot_user_id, application_id, session, bridge, config
     if failed:
         await report_unavailable(session, "route", result.get("reason"))
     return result.get("route") == "sfstats"
+
+
+async def hand_over(message, *, bot_user_id, application_id, session, bridge, config):
+    """True when SF Stats answered a message addressed to it that Bub couldn't read either ("who's my nemesis" routed
+    to frame data, "most indian character"). Sent as routed to SF Stats, so the web app never hands it back."""
+    if not (config.enabled and config.url and bridge.enabled and bot_user_id and application_id):
+        return False
+    facts = snapshot(message, bot_user_id)
+    if addressed(facts, bot_user_id=bot_user_id, mention_ids=config.mention_ids) != "sfstats":
+        return False
+    payload = forward_payload(facts, application_id=application_id, bot_user_id=bot_user_id, mention_ids=config.mention_ids,
+                              kind="sfstats")
+    payload["routed"] = "sfstats"
+    result = await forward(payload, url=config.url, session=session, bridge=bridge, timeout_seconds=config.timeout_seconds)
+    return bool(result.get("handled"))
