@@ -2,7 +2,6 @@
 
 import io
 import math
-import os
 import re
 
 import discord
@@ -1655,19 +1654,6 @@ class FrameResultView(OwnedView):
         self.show_stats = False
         if game == "sf6":
             from bubbot.frame_data.frame_output import SF6NotesButton, SF6ShowStatsButton
-            from bubbot.frame_data.gif_lookup import (
-                get_existing_local_gif_asset_paths,
-                get_first_remote_gif_url,
-                get_frame_row_gif_links,
-            )
-            self.gif_links = list(get_frame_row_gif_links(row) or [])
-            self.default_gif_url = get_first_remote_gif_url(self.gif_links)
-            asset_paths = (
-                get_existing_local_gif_asset_paths(self.gif_links, limit=1)
-                if self.gif_links and not self.default_gif_url
-                else []
-            )
-            self.default_gif_asset_path = asset_paths[0] if asset_paths else None
             self.character_stats = FRAME_STATS.get(char_key) or {}
             self.stats_button = SF6ShowStatsButton(disabled=not self.character_stats)
             self.notes_button = SF6NotesButton(row)
@@ -1757,25 +1743,7 @@ class FrameResultView(OwnedView):
                     build_character_stats_embed(self.char_key, self.character_stats),
                     self.game,
                 )
-            if getattr(self, "default_gif_url", ""):
-                return apply_game_source_footer(
-                    build_sf6_frame_embed(
-                        self.row,
-                        image_url_override=self.default_gif_url,
-                        show_notes=getattr(self, "show_notes", False),
-                    ),
-                    self.game,
-                )
-            if getattr(self, "default_gif_asset_path", None):
-                filename = os.path.basename(self.default_gif_asset_path)
-                return apply_game_source_footer(
-                    build_sf6_frame_embed(
-                        self.row,
-                        image_url_override=f"attachment://{filename}",
-                        show_notes=getattr(self, "show_notes", False),
-                    ),
-                    self.game,
-                )
+            # SuperCombo's hitbox image only (frame_output.get_sf6_move_image_url), never a GIF.
             return apply_game_source_footer(
                 build_sf6_frame_embed(self.row, show_notes=getattr(self, "show_notes", False)),
                 self.game,
@@ -1817,10 +1785,6 @@ class FrameResultView(OwnedView):
         files = source_icon_files(self.game, kind="frame")
         if self.game == "cotw" and getattr(self, "cotw_image_bytes", None) and getattr(self, "cotw_image_filename", None):
             files.append(discord.File(io.BytesIO(self.cotw_image_bytes), filename=self.cotw_image_filename))
-            return files
-        if self.game == "sf6" and getattr(self, "default_gif_asset_path", None):
-            filename = os.path.basename(self.default_gif_asset_path)
-            files.append(discord.File(self.default_gif_asset_path, filename=filename))
         return files
 
 

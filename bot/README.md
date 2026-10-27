@@ -18,7 +18,7 @@ A Discord bot that provides instant frame data, hitbox images, combo routes, and
 
 | Game | Source | Notes |
 |------|--------|-------|
-| Street Fighter 6 | FAT ODS | Local hitbox GIFs, SuperCombo images |
+| Street Fighter 6 | FAT ODS | SuperCombo hitbox images |
 | Street Fighter V | FAT ODS | V-Trigger separated rows, SuperCombo images |
 | Ultra Street Fighter IV | SuperCombo ODS | 44-character roster, source notes, available move images |
 | Guilty Gear Strive | Dustloop ODS | Hitbox images, state-specific moves (Installs, Blood, etc.) |

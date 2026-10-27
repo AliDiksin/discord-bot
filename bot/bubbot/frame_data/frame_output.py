@@ -13,8 +13,6 @@ from bubbot.utils.discord_formatting import (
     truncate_value as shared_truncate_value,
 )
 from bubbot.utils.image_cache_utils import import_cache_module, merge_nested_url_cache
-from bubbot.utils.mediawiki_images import mediawiki_thumb_url as shared_mediawiki_thumb_url
-from bubbot.utils.mediawiki_images import resize_mediawiki_thumb_url as shared_resize_mediawiki_thumb_url
 from bubbot.utils.row_utils import unique_rows
 from bubbot.frame_data.sf6_character_stats import (
     build_character_stats_embed,
@@ -35,11 +33,8 @@ get_existing_local_gif_asset_paths = None
 is_deleted_message_reference_error = None
 RANGE_SCROLLS_MISSING_TEXT = "the range of that move is not on the supercombo scrolls"
 RANGE_SCROLLS_MISSING_TABLE_TEXT = "missing"
-FRAME_IMAGE_THUMB_WIDTH = 286
-SF6_BOTTOM_IMAGE_WIDTH = 315
-SF6_MOVE_IMAGE_URLS = {
-    ("ken", "5hp"): "https://wiki.supercombo.gg/images/thumb/6/6c/SF6_Ken_5hp.png/262px-SF6_Ken_5hp.png",
-}
+# SuperCombo hitbox images by (character, numCmd), built by scripts/build_move_image_caches.py.
+SF6_HITBOX_IMAGE_URLS = {}
 SF6_MOVE_IMAGES_MODULE = "bubbot.data.sf6_move_images"
 
 
@@ -54,15 +49,15 @@ def load_move_image_urls(module_name=SF6_MOVE_IMAGES_MODULE):
     image_module = import_cache_module(module_name, "sf6-images")
     if not image_module:
         return False
-    data = getattr(image_module, "SF6_MOVE_IMAGE_URLS", {})
+    data = getattr(image_module, "SF6_HITBOX_IMAGE_URLS", {})
 
     loaded = merge_nested_url_cache(
-        SF6_MOVE_IMAGE_URLS,
+        SF6_HITBOX_IMAGE_URLS,
         data,
         char_key_fn=normalize_image_key,
         move_key_fn=normalize_image_key,
     )
-    print(f"[sf6-images] loaded {loaded} move image links", flush=True)
+    print(f"[sf6-images] loaded {loaded} hitbox image links", flush=True)
     return True
 
 
@@ -96,35 +91,11 @@ def normalize_image_key(value):
     return compact_key(value)
 
 
-def mediawiki_thumb_url(base_url, filename, thumb_width=FRAME_IMAGE_THUMB_WIDTH):
-    return shared_mediawiki_thumb_url(base_url, filename, thumb_width)
-
-
-def resize_mediawiki_thumb_url(url, thumb_width=FRAME_IMAGE_THUMB_WIDTH):
-    return shared_resize_mediawiki_thumb_url(url, thumb_width)
-
-
 def get_sf6_move_image_url(row):
+    """The move's SuperCombo hitbox image, or "" when SuperCombo has none for it: never another image."""
     char_key = normalize_image_key(row.get("char_name", ""))
     num_cmd_key = normalize_image_key(row.get("numCmd", ""))
-    image_url = SF6_MOVE_IMAGE_URLS.get((char_key, num_cmd_key))
-    if image_url:
-        return image_url
-
-    strength_match = re.match(r"^(.*?)([lmh])([pk])$", num_cmd_key)
-    if strength_match:
-        prefix, _strength, button = strength_match.groups()
-        for strength in ("l", "m", "h"):
-            image_url = SF6_MOVE_IMAGE_URLS.get((char_key, f"{prefix}{strength}{button}"))
-            if image_url:
-                return image_url
-
-    num_cmd = str(row.get("numCmd", "")).strip()
-    char_name = str(row.get("char_name", "")).strip()
-    if not char_name or not num_cmd:
-        return ""
-    filename = f"SF6_{char_name}_{num_cmd.lower()}.png"
-    return mediawiki_thumb_url("https://wiki.supercombo.gg", filename, thumb_width=SF6_BOTTOM_IMAGE_WIDTH)
+    return SF6_HITBOX_IMAGE_URLS.get((char_key, num_cmd_key), "")
 
 
 load_move_image_urls()

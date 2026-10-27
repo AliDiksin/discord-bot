@@ -5,6 +5,7 @@ Regenerates remote image, hitbox, and notes URL dicts for supported games.
 from __future__ import annotations
 
 import argparse
+import html
 import re
 import sys
 from pathlib import Path
@@ -24,7 +25,7 @@ from scripts.generation_utils import write_python_constants  # noqa: E402
 SF6_API_URL = "https://wiki.supercombo.gg/api.php"
 GGST_API_URL = "https://www.dustloop.com/wiki/api.php"
 FRAME_IMAGE_THUMB_WIDTH = 220
-SF6_BOTTOM_IMAGE_WIDTH = 262
+SF6_HITBOX_IMAGE_WIDTH = 400
 GGST_MOVE_SHEET_SUFFIXES = [
     "Dragon Install",
     "Install",
@@ -60,72 +61,145 @@ def write_python_cache(path: Path, variable_name: str, data: dict) -> None:
     write_python_constants(path, {variable_name: data}, "build_move_image_caches.py")
 
 
-def sf6_page_title(character_label: str) -> str:
-    # Wiki page names keep dotted abbreviations as-is ("C.Viper", not "C._Viper").
-    return f"Street_Fighter_6/{character_label.replace(' ', '_')}"
+# SF6 embeds show SuperCombo's hitbox images. The wiki's SF6_FrameData Cargo table lists each move's
+# input, name and hitbox files; FAT writes inputs differently, so each FAT numCmd is translated to
+# SuperCombo's notation before matching.
 
 
-def fetch_sf6_page_images(character_label: str, sleep_seconds: float) -> list[str]:
-    data = wiki_request(
-        SF6_API_URL,
-        {
-            "action": "parse",
-            "page": sf6_page_title(character_label),
-            "prop": "images",
-            "format": "json",
-        },
-        sleep_seconds,
-    )
-    return list((data.get("parse") or {}).get("images") or [])
+def fetch_sf6_supercombo_rows(sleep_seconds: float) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    while True:
+        data = wiki_request(
+            SF6_API_URL,
+            {
+                "action": "cargoquery",
+                "tables": "SF6_FrameData",
+                "fields": "chara,input,name,hitboxes",
+                "limit": 500,
+                "offset": len(rows),
+                "format": "json",
+            },
+            sleep_seconds,
+        )
+        batch = [item.get("title") or {} for item in data.get("cargoquery") or []]
+        rows.extend(batch)
+        if len(batch) < 500:
+            return rows
 
 
-def sf6_image_move_key(filename: str) -> str:
-    stem = re.sub(r"\.(?:png|webp|gif|jpg|jpeg)$", "", filename, flags=re.IGNORECASE)
-    if not stem.lower().startswith("sf6_"):
-        return ""
-    parts = stem.split("_")
-    if len(parts) < 3:
-        return ""
-    suffix = "_".join(parts[2:])
-    if any(token in suffix.lower() for token in ("hitbox", "icon", "portrait")):
-        return ""
-    return normalize_key(suffix)
+def sf6_hitbox_files(value: object) -> list[str]:
+    # Comma-separated; rows without hitboxes hold the template's own "{{{hitboxes}}}".
+    names = (name.strip() for name in str(value or "").split(","))
+    return [name for name in names if re.search(r"\.(?:png|webp|gif|jpe?g)$", name, re.IGNORECASE)]
 
 
-def build_sf6_cache(workbook_path: Path, output_path: Path, sleep_seconds: float, resolve_urls: bool) -> int:
+def sf6_input_key(value: object) -> str:
+    """Input notation without spaces or dots, keeping [held] buttons, ~ chains and / alternatives."""
+    text = html.unescape(str(value or "")).lower().replace(">", "~")
+    text = re.sub(r"\(hold ok\)", "", text)
+    text = re.sub(r"\s+or\s+", "/", text)
+    return re.sub(r"[^a-z0-9\[\]~/+]", "", text)
+
+
+def _supercombo_segment(segment: str, airborne: bool, after_jump: bool) -> tuple[str, bool]:
+    hold = bool(re.search(r"\(hold\)", segment, re.IGNORECASE))
+    air = airborne or bool(re.search(r"\(air\)", segment, re.IGNORECASE))
+    segment = re.sub(r"\((?:hold|air|cancel|ca)\)", "", segment, flags=re.IGNORECASE).strip()
+    segment = re.sub(r"^(4(?=6)|2(?=8))", r"[\1]", segment)  # charge: 46MP is [4]6MP
+    segment = re.sub(r"^7\s*or\s*9(?=\D)", "8", segment, flags=re.IGNORECASE)
+    # 8LP is j.LP, but after a bare "8 >" jump an 8HK is the air command j.8HK.
+    if not after_jump and re.match(r"^[789](?=[A-Z])", segment):
+        segment, air = segment[1:], True
+    if hold:
+        segment = re.sub(r"([LMH]?[PK]{1,3})$", r"[\1]", segment)
+    return ("j." if air else "") + segment, air
+
+
+def sf6_fat_input_keys(num_cmd: object) -> list[str]:
+    """SuperCombo input keys for a FAT numCmd, best first: as written, then in SuperCombo's notation."""
+    text = str(num_cmd or "").strip()
+    keys = [sf6_input_key(text)]
+    either = re.fullmatch(r"([1-9])\s*or\s*([1-9])(\D\S*)", text)
+    if either:
+        keys.append(sf6_input_key(f"{either[1]}{either[3]} or {either[2]}{either[3]}"))
+    parts = [part for part in re.split(r"\s*>\s*", text) if part]
+    after_jump = len(parts) > 1 and bool(re.fullmatch(r"[789]", parts[0]))
+    if after_jump:
+        parts = parts[1:]
+    segments, air = [], after_jump
+    for part in parts:
+        segment, air = _supercombo_segment(part, air, after_jump)
+        segments.append(segment)
+    if segments:
+        keys.append(sf6_input_key("~".join(segments)))
+        # SuperCombo writes follow-ups without the neutral 5 ("5MP~MK"), sometimes without a repeated j.
+        keys.append(sf6_input_key("~".join([segments[0]] + [re.sub(r"^(j\.)?5(?=[LMH][PK]|\[)", r"\1", s) for s in segments[1:]])))
+        keys.append(sf6_input_key("~".join([segments[0]] + [re.sub(r"^j\.", "", s) for s in segments[1:]])))
+    return list(dict.fromkeys(key for key in keys if key))
+
+
+def _sf6_base_name(name: object) -> str:
+    return normalize_key(re.sub(r"\s*(?:\([^)]*\)|lv\.?\s*\d+)\s*$", "", str(name or ""), flags=re.IGNORECASE))
+
+
+def pick_sf6_supercombo_row(candidates: list[dict[str, str]], move_name: object) -> dict[str, str] | None:
+    """The SuperCombo row for a FAT move among those sharing its input, or None when they can't be told apart."""
+    if len({row["hitboxes"] for row in candidates}) == 1:
+        return candidates[0]
+    name = normalize_key(re.sub(r"\(critical art\)", "(CA)", str(move_name or ""), flags=re.IGNORECASE))
+    for matches in (
+        lambda row: normalize_key(row["name"]) == name,
+        lambda row: normalize_key(row["name"]).startswith(name) or _sf6_base_name(row["name"]) == name,
+    ):
+        hits = [row for row in candidates if matches(row)]
+        if hits:
+            return hits[0]
+    plain = [row for row in candidates if "(" not in row["name"]]
+    if len({row["hitboxes"] for row in plain}) == 1:
+        return plain[0]
+    # Versions of one move (drink levels, Lv.1/Lv.2): the first, base version.
+    return candidates[0] if len({_sf6_base_name(row["name"]) for row in candidates}) == 1 else None
+
+
+def build_sf6_cache(workbook_path: Path, output_path: Path, sleep_seconds: float) -> int:
+    index: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for row in fetch_sf6_supercombo_rows(sleep_seconds):
+        if sf6_hitbox_files(row.get("hitboxes")):
+            index.setdefault((normalize_key(row.get("chara")), sf6_input_key(row.get("input"))), []).append(row)
+
     xls = pd.ExcelFile(workbook_path, engine="odf")
-    cache: dict[str, dict[str, str]] = {}
-    filenames_to_resolve: list[str] = []
-    pending: dict[tuple[str, str], str] = {}
-
+    # The bot looks images up by character and compacted numCmd, so rows sharing one get an image only
+    # when they also share the hitbox.
+    pending: dict[tuple[str, str], tuple[str, str]] = {}
+    conflicts: set[tuple[str, str]] = set()
     for sheet_name in xls.sheet_names:
         if not sheet_name.endswith("Normal"):
             continue
-        character_label = sheet_name[: -len("Normal")].rstrip(".")
-        df = pd.read_excel(xls, sheet_name=sheet_name).fillna("")
-        row_keys = {normalize_key(row.get("numCmd")): str(row.get("numCmd", "")).strip() for row in df.to_dict("records")}
-        if not row_keys:
-            continue
-        try:
-            images = fetch_sf6_page_images(character_label, sleep_seconds)
-        except Exception as exc:
-            print(f"[sf6-images] skipped {character_label}: {exc}", flush=True)
-            continue
-        for image in images:
-            move_key = sf6_image_move_key(image)
-            if move_key not in row_keys:
+        char_key = normalize_key(sheet_name[: -len("Normal")].rstrip("."))
+        for row in pd.read_excel(xls, sheet_name=sheet_name).fillna("").to_dict("records"):
+            num_cmd = str(row.get("numCmd", "")).strip()
+            candidates = next((index[(char_key, key)] for key in sf6_fat_input_keys(num_cmd) if (char_key, key) in index), [])
+            chosen = pick_sf6_supercombo_row(candidates, row.get("moveName")) if candidates else None
+            if not chosen:
                 continue
-            pending[(normalize_key(character_label), row_keys[move_key])] = image
-            filenames_to_resolve.append(image)
+            filename = sf6_hitbox_files(chosen["hitboxes"])[0]
+            key = (char_key, normalize_key(num_cmd))
+            if key in pending and pending[key][1] != filename:
+                conflicts.add(key)
+            pending.setdefault(key, (num_cmd, filename))
+    for key in conflicts:
+        del pending[key]
 
-    urls = resolve_file_urls(SF6_API_URL, filenames_to_resolve, thumb_width=SF6_BOTTOM_IMAGE_WIDTH, sleep_seconds=sleep_seconds) if resolve_urls else {}
-    for (char_key, move_key), filename in pending.items():
-        url = urls.get(filename.lower()) or urls.get(filename.replace(" ", "_").lower()) or mediawiki_thumb_url(SF6_API_URL, filename, thumb_width=SF6_BOTTOM_IMAGE_WIDTH)
-        if not url:
-            continue
-        cache.setdefault(char_key, {})[move_key] = url
+    # Resolved through the API: exact URLs, never wider than the file, and missing files drop out.
+    urls = resolve_file_urls(SF6_API_URL, [filename for _num_cmd, filename in pending.values()], SF6_HITBOX_IMAGE_WIDTH, sleep_seconds)
+    cache: dict[str, dict[str, str]] = {}
+    for (char_key, _key), (num_cmd, filename) in pending.items():
+        url = scraper_utils.file_url_for_name(urls, filename)
+        if url:
+            cache.setdefault(char_key, {})[num_cmd] = url
 
-    write_python_cache(output_path, "SF6_MOVE_IMAGE_URLS", cache)
+    write_python_cache(output_path, "SF6_HITBOX_IMAGE_URLS", cache)
+    print(f"[sf6-images] {len(conflicts)} numCmds left out: their FAT rows have different hitboxes", flush=True)
     return sum(len(moves) for moves in cache.values())
 
 
@@ -393,7 +467,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sf6-output", default="bubbot/data/sf6_move_images.py")
     parser.add_argument("--ggst-output", default="bubbot/data/ggst_move_images.py")
     parser.add_argument("--sleep", type=float, default=0.1)
-    parser.add_argument("--resolve-urls", action="store_true", help="Resolve file URLs through the wiki API instead of deriving direct thumbnail URLs locally.")
+    parser.add_argument("--resolve-urls", action="store_true", help="GGST: resolve file URLs through the wiki API instead of deriving direct thumbnail URLs locally (SF6 always resolves).")
     parser.add_argument("--skip-sf6", action="store_true")
     parser.add_argument("--skip-ggst", action="store_true")
     return parser.parse_args()
@@ -402,8 +476,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     if not args.skip_sf6:
-        count = build_sf6_cache(Path(args.sf6_workbook), Path(args.sf6_output), args.sleep, args.resolve_urls)
-        print(f"Wrote {args.sf6_output}: {count} SF6 move image links")
+        count = build_sf6_cache(Path(args.sf6_workbook), Path(args.sf6_output), args.sleep)
+        print(f"Wrote {args.sf6_output}: {count} SF6 hitbox image links")
     if not args.skip_ggst:
         normal_count, hitbox_count = build_ggst_cache(Path(args.ggst_workbook), Path(args.ggst_output), args.sleep, args.resolve_urls)
         print(f"Wrote {args.ggst_output}: {normal_count} GGST move image links, {hitbox_count} GGST hitbox links")

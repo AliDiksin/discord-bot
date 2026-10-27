@@ -223,14 +223,6 @@ def get_existing_local_gif_asset_paths(gif_links, limit=DISCORD_ATTACHMENT_LIMIT
     return paths
 
 
-def get_first_remote_gif_url(gif_links):
-    for move_link in gif_links or []:
-        link = str(move_link or "").strip()
-        if link.lower().startswith(("https://", "http://")):
-            return link
-    return ""
-
-
 def normalize_move_name_for_gif_text(value):
     text = str(value or "").lower()
     text = text.replace("aerial", "air")

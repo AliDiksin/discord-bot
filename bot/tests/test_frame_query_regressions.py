@@ -11,6 +11,7 @@ from bubbot.features import bub_llm
 from bubbot.frame_data import avtl_frame_data
 from bubbot.frame_data import bbcf_frame_data
 from bubbot.frame_data import cotw_frame_data
+from bubbot.frame_data import frame_output
 from bubbot.frame_data import gif_lookup
 from bubbot.frame_data import ggacr_frame_data
 from bubbot.frame_data import ggst_frame_data
@@ -637,11 +638,24 @@ class FrameQueryRegressions(unittest.TestCase):
         links = gif_lookup.get_frame_row_gif_links(row)
         self.assertTrue(links[0].startswith("https://ultimateframedata.com/"))
 
+    def test_sf6_frame_card_shows_only_the_supercombo_hitbox_image(self):
         from bubbot.features import menu_system
 
-        view = menu_system.build_frame_result_view("sf6", row, owner_id=1, char_key="alex")
-        self.assertEqual(links[0], view.default_gif_url)
-        self.assertIsNone(view.default_gif_asset_path)
+        row = bot.find_moves_in_text("alex stance lariat")["rows"][0]
+        # startup.handle_ready injects the SF6 embed builder; tests never connect.
+        with patch.object(menu_system, "build_sf6_frame_embed", frame_output.build_frame_embed):
+            view = menu_system.build_frame_result_view("sf6", row, owner_id=1, char_key="alex")
+            embed = view.build_embed()
+            taunt = menu_system.build_frame_result_view(
+                "sf6", {**row, "numCmd": "5PPPKKK", "moveName": "Taunt"}, owner_id=1, char_key="alex",
+            ).build_embed()
+        self.assertRegex(embed.image.url, r"^https://wiki\.supercombo\.gg/images/.+_hitbox")
+        self.assertIn("SuperCombo Wiki", embed.footer.text)
+        self.assertNotIn("Ultimate Frame Data", embed.footer.text)
+        self.assertFalse([item for item in view.active_files() if item.filename.endswith(".gif")])
+        # No hitbox image on SuperCombo: no image at all, not a GIF or another strength's picture.
+        self.assertEqual("", frame_output.get_sf6_move_image_url({"char_name": "Ken", "numCmd": "5PPPKKK"}))
+        self.assertIsNone(taunt.image.url)
 
     def test_cammy_hooligan_hold_rejects_unrelated_charged_kick_gif(self):
         payload = bot.find_moves_in_text("cammy 236hp")
