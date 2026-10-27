@@ -1,5 +1,5 @@
 """Public slash command registration and global Discord command tree sync.
-Registers /sf6, cross-game frame lookups, combos, stats, and /bub menu handlers once per tree."""
+Registers /sf6, cross-game frame lookups, combos, stats, and /sfstatsmenu handlers once per tree."""
 
 import os
 import re
@@ -598,11 +598,11 @@ def register_slash_commands(tree, deps):
                 f"No {combo_data_module.game_label(game)} combos found for {char_name} with those filters."
             )
 
-    @tree.command(name="bub", description="Open Bub's menu")
-    async def bub_slash_command(interaction: discord.Interaction):
+    @tree.command(name="sfstatsmenu", description="Open the SF Stats frame data menu")
+    async def sfstats_menu_slash_command(interaction: discord.Interaction):
         await interaction.response.send_message(embed=menu_system._main_menu_embed(), view=menu_system.MainMenuView(interaction.user.id))
 
-    @tree.command(name="readme", description="Show a quick guide to Bub's features")
+    @tree.command(name="readme", description="Show a quick guide to SF Stats")
     async def readme_slash_command(interaction: discord.Interaction):
         await interaction.response.send_message(embed=menu_system.build_readme_embed())
 

@@ -1,4 +1,4 @@
-"""Discord /bub menu: game/char/move selectors, frame results, combos, quiz launch."""
+"""Discord /sfstatsmenu menu: game/char/move selectors, frame results, combos, quiz launch."""
 
 import io
 import math
@@ -153,7 +153,7 @@ _MENU_GAME_LABELS = {key: label for key, label, _colour in MENU_GAMES}
 _MENU_GAME_COLOURS = {key: colour for key, label, colour in MENU_GAMES}
 
 
-# Base view: owner lock for public /bub menu
+# Base view: owner lock for public /sfstatsmenu menu
 class OwnedView(discord.ui.View):
     def __init__(self, owner_id, *, menu_locked=False, timeout=None):
         super().__init__(timeout=timeout)
@@ -294,7 +294,7 @@ async def _open_game_combos_menu(interaction, game, owner_id):
             title=f"{combo_data.game_label(game_key)} - Combos",
             description=(
                 f"Combo data did not load. Deploy `{missing_file}` next to `bot.py` on the server "
-                f"and restart the `bub` service."
+                f"and restart the bot."
             ),
             colour=0xFF4444,
         ),
@@ -2216,7 +2216,7 @@ class QuizFakeMessage:
 # Menu embed builders and public send entrypoints
 def _main_menu_embed():
     return discord.Embed(
-        title="Bub Menu",
+        title="SF Stats Menu",
         description="Choose a game from the dropdown below, or open Readme for a quick tutorial.",
         colour=0xFFD700,
     )
@@ -2224,46 +2224,60 @@ def _main_menu_embed():
 
 def build_readme_embed():
     embed = discord.Embed(
-        title="Bub Readme",
-        description="A quick guide to using Bub for fighting-game frame data, images, menus, and quizzes.",
+        title="SF Stats Readme",
+        description=(
+            "A quick guide to SF Stats: Street Fighter 6 player stats from sfstats.app, plus frame data, "
+            "images, menus, and quizzes for 11 fighting games."
+        ),
         colour=0xFFD700,
     )
     embed.add_field(
-        name="1. Ask Naturally",
+        name="1. Player Stats",
         value=(
-            "Mention Bub, then type a character and move. Examples: `@Bub ryu 5hp`, "
-            "`@Bub ky far slash`, `@Bub amane 5b`, `@Bub ashrah heavens palm`. "
-            "You can add `framedata`, but most direct character+move queries do not need it."
+            "`/profile` (also `/player` and `/cfn`) shows a player's rank, matchups, rating, habits, and replays; "
+            "`/me` shows your own. Also `/vs`, `/leaderboard`, `/server-leaderboard`, `/character`, `/replay`, "
+            "`/queue`, and `/alias`. Use `/link` to say which CFN profile is you in this server. "
+            "Right-click a member, then Apps, for **SF Stats profile** or **Compare with me**. "
+            "You can also ask in plain words, like `@SF Stats my rank`. `/help` has the full guide, "
+            "and server admins can set up rank-up and replay posts with `/setup`."
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="2. Ask For Frame Data",
+        value=(
+            "Mention SF Stats, then type a character and move. Examples: `@SF Stats ryu 5hp`, "
+            "`@SF Stats ky far slash`, `@SF Stats amane 5b`, `@SF Stats ashrah heavens palm`. "
+            "You can add `framedata`, but most direct character+move queries do not need it. "
             "Disclaimer: Natural language processing is a WIP for games other than SF6. I recommend using the menu or slash commands for anything esoteric such as installs or stances"
 
         ),
         inline=False,
     )
     embed.add_field(
-        name="2. Use Game Tags When Needed",
+        name="3. Use Game Tags When Needed",
         value=(
             "Shared names can be ambiguous. Add tags like `sfv`, `3s`, `ggst`, `ggacr`, `bbcf`, `cotw`, "
-            "`2xko`, `mk1`, or `avtl` when Bub needs context. Bare `guilty gear` defaults to Strive; "
+            "`2xko`, `mk1`, or `avtl` when a name could mean more than one game. Bare `guilty gear` defaults to Strive; "
             "use `+r`, `plus r`, `gg +r`, `accent core`, `acpr`, or `guilty gear accent core` for Guilty Gear Accent Core Plus R. "
-            "Example: `@Bub 3s ken hadouken`."
+            "Example: `@SF Stats 3s ken hadouken`."
         ),
         inline=False,
     )
     embed.add_field(
-        name="3. Images, Notes, And Hitboxes",
+        name="4. Images, Notes, And Hitboxes",
         value=(
-            "Ask for `hitbox`, `image`, `gif`, or `notes` when supported. Frame results show hitbox GIFs/images "
+            "Ask for `hitbox`, `image`, `gif`, or `notes` when supported. Frame results show hitbox images "
             "automatically when available, and notes can be toggled with the Show Notes button. Some games "
             "also expose `Show All Images` for multi-image moves."
         ),
         inline=False,
     )
     embed.add_field(
-        name="4. Menus And Slash Commands",
+        name="5. Menus And Slash Commands",
         value=(
-            "Use `/bub` for the guided menu (game picker dropdown), `@bub` alone for the main menu, "
-            "or `@bub` plus a game tag only (e.g. `@bub sf6`) to open that game's menu. "
-            "Slash commands include `/sf6`, `/sf6-stats` (SF6 stats), `/sf6-combos`, `/ggst`, `/ggacr`, `/bbcf`, `/cotw`, `/third-strike`, `/mk1`, `/mk1-combos`, `/avtl`, and `/glossary`. "
+            "Use `/sfstatsmenu` for the guided frame data menu (game picker dropdown). "
+            "Slash commands include `/sf6`, `/sf6-stats` (SF6 stats), `/sf6-combos`, `/sfv`, `/usf4`, `/ggst`, `/ggacr`, `/2xko`, `/bbcf`, `/cotw`, `/third-strike`, `/mk1`, `/mk1-combos`, `/avtl`, and `/glossary`. "
             "Menus are locked to the user who opened them."
         ),
         inline=False,
@@ -2271,13 +2285,13 @@ def build_readme_embed():
     embed.add_field(
         name="FG Glossary",
         value=(
-            "Use `/glossary safe jump`, `@Bub glossary option select`, or the main menu Glossary button "
+            "Use `/glossary safe jump` or the main menu Glossary button "
             "to show a local glossary definition with a source link to Infil's Fighting Game Glossary."
         ),
         inline=False,
     )
     embed.add_field(
-        name="5. Quiz And Compare",
+        name="6. Quiz And Compare",
         value=(
             "Each game menu has Combos (SF6/MK1) and Quiz. The SF6 menu also has Stats between Frame Data and Combos for character stat sheets. "
             "Frame-data results can include a Compare button that lets you choose another move from the same game "

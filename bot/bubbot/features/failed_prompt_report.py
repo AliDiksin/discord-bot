@@ -22,7 +22,7 @@ class FailedPromptReportModal(discord.ui.Modal, title="Report an issue"):
     report_details = discord.ui.TextInput(
         label="What went wrong?",
         style=discord.TextStyle.paragraph,
-        placeholder="Example: I asked for mai ex fan and Bub said the scrolls are missing.",
+        placeholder="Example: I asked for mai ex fan and SF Stats couldn't find the move.",
         required=True,
         max_length=1500,
     )

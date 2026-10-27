@@ -186,7 +186,7 @@ def embed(ranking):
         color=0x5865F2,
     )
     footer = f"{filters} · " if filters else ""
-    result.set_footer(text=f"{footer}From Bub's frame data · ask for any move to see its full card")
+    result.set_footer(text=f"{footer}From SF Stats frame data · ask for any move to see its full card")
     return result
 
 

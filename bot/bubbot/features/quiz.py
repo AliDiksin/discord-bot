@@ -797,7 +797,7 @@ async def _quiz_publish_from_placeholder(channel, placeholder_message, text, emb
 class QuizChannelMessage:
     def __init__(self, channel, author=None):
         self.channel = channel
-        self.author = author or type("QuizAuthor", (), {"id": 0, "display_name": "Bub"})()
+        self.author = author or type("QuizAuthor", (), {"id": 0, "display_name": "SF Stats"})()
         self.content = ""
         self.id = None
         self.reference = None
@@ -1375,13 +1375,13 @@ def _quiz_build_crown_line(scores, score_names=None):
 
     if len(winner_names) == 1:
         return (
-            f"By decree of Bub, {winner_names[0]} takes the crown with "
+            f"By decree of SF Stats, {winner_names[0]} takes the crown with "
             f"{top_points} point{'s' if top_points != 1 else ''}."
         )
 
     joined_winners = ", ".join(winner_names)
     return (
-        f"By decree of Bub, the crown is shared by {joined_winners} at "
+        f"By decree of SF Stats, the crown is shared by {joined_winners} at "
         f"{top_points} point{'s' if top_points != 1 else ''} each."
     )
 
@@ -1896,7 +1896,7 @@ def _quiz_timeout_expiry_message(pending_state):
     crown_line = _quiz_build_crown_line(scores, score_names)
     score_text = _format_quiz_scores(scores, score_names)
     return (
-        "By decree of Bub, the 5-minute window for another question has closed.\n"
+        "By decree of SF Stats, the 5-minute window for another question has closed.\n"
         f"{crown_line}\n"
         f"{score_text}"
     )
