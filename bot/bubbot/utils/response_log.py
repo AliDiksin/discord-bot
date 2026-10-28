@@ -211,10 +211,9 @@ def log_from_interaction(
     return log_record(record, base_dir=base_dir)
 
 
-# Owner notifications: a DM to the owner and a post in the maintainers' report channel
-# (BUB_OWNER_NOTIFY_CHANNEL_ID / BUB_LOG_CHANNEL_ID, "off" for none). SF Stats reports there too.
-_DEFAULT_OWNER_USER_ID = 427263312217243668
-_DEFAULT_NOTIFY_CHANNEL_ID = 1563301451969724567
+# Owner notifications: a post in the bot's error channel (BUB_OWNER_NOTIFY_CHANNEL_ID / BUB_LOG_CHANNEL_ID,
+# "off" for none), where SF Stats reports too. No DM unless BUB_OWNER_USER_ID names someone.
+_DEFAULT_NOTIFY_CHANNEL_ID = 1563332693423431900
 
 
 def get_owner_notify_channel_id() -> Optional[int]:
@@ -232,7 +231,7 @@ def get_owner_notify_user_id() -> Optional[int]:
         raw = str(os.getenv(env_name, "") or "").strip()
         if raw.isdigit():
             return int(raw)
-    return _DEFAULT_OWNER_USER_ID
+    return None
 
 
 def format_owner_notification(record: dict[str, Any]) -> str:

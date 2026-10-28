@@ -1,1 +1,1 @@
-"""Discord feature modules: quiz, reminders, /bub menu, LLM persona, and issue reporting."""
+"""Discord feature modules: quiz, reminders, /sfstatsmenu menu, LLM persona, and issue reporting."""

@@ -4,7 +4,7 @@ The home of the **SF Stats** Discord bot. It has two parts:
 
 | Folder | What it is | Who runs it |
 | --- | --- | --- |
-| [`bot/`](bot/) | **The bot.** Bub (FrameBub), the frame-data bot for SF6, SFV, USF4, GGST, 2XKO, BBCF, GGACR, COTW, Third Strike, MK1 and AVTL, with its slash commands, `/bub` menus, buttons, images and quiz. It also carries SF Stats: `/cfn`, `/profile`, `/link`, leaderboards and their buttons are forwarded to sfstats.app, and `@SF Stats …` questions are routed between SF Stats and Bub by the site's Decisions check. | The FrameBub application, hosted by Bub's maintainer |
+| [`bot/`](bot/) | **The bot.** Bub (FrameBub), the frame-data bot for SF6, SFV, USF4, GGST, 2XKO, BBCF, GGACR, COTW, Third Strike, MK1 and AVTL, with its slash commands, `/sfstatsmenu` menus, buttons, images and quiz. It also carries SF Stats: `/cfn`, `/profile`, `/link`, leaderboards and their buttons are forwarded to sfstats.app, and `@SF Stats …` questions are routed between SF Stats and Bub by the site's Decisions check. | The FrameBub application, hosted by Bub's maintainer |
 | everything else | The original SF Stats app's open parts: command definitions, the replay-queue 🔔 reaction gateway, emoji sync and the interaction protocol. | The original SF Stats application, alongside sfstats.app |
 
 **Running the bot:** see [`bot/README.md`](bot/README.md). In short, install

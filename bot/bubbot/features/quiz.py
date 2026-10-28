@@ -9,6 +9,7 @@ import random
 import re
 
 import discord
+from bubbot.utils.sfstats_style import ACTION, toggle_style
 
 
 # Persona hooks (default stubs; buenavista may override)
@@ -509,7 +510,7 @@ class QuizNotesButton(discord.ui.Button):
         self.game = _quiz_game_key(game)
         super().__init__(
             label="Show Notes",
-            style=discord.ButtonStyle.primary,
+            style=ACTION,
             disabled=not _quiz_row_has_notes(row, self.game),
             row=0,
         )
@@ -520,13 +521,13 @@ class QuizNotesButton(discord.ui.Button):
             return
         self.view.show_notes = not self.view.show_notes
         self.label = "Hide Notes" if self.view.show_notes else "Show Notes"
-        self.style = discord.ButtonStyle.secondary if self.view.show_notes else discord.ButtonStyle.primary
+        self.style = toggle_style(self.view.show_notes)
         await interaction.response.edit_message(embed=self.view.build_embed(), view=self.view, attachments=[])
 
 
 class QuizGiveUpButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Give Up", style=discord.ButtonStyle.danger, row=0)
+        super().__init__(label="Give Up", style=ACTION, row=0)
 
     async def callback(self, interaction: discord.Interaction):
         channel = interaction.channel
@@ -797,7 +798,7 @@ async def _quiz_publish_from_placeholder(channel, placeholder_message, text, emb
 class QuizChannelMessage:
     def __init__(self, channel, author=None):
         self.channel = channel
-        self.author = author or type("QuizAuthor", (), {"id": 0, "display_name": "Bub"})()
+        self.author = author or type("QuizAuthor", (), {"id": 0, "display_name": "SF Stats"})()
         self.content = ""
         self.id = None
         self.reference = None
@@ -1375,13 +1376,13 @@ def _quiz_build_crown_line(scores, score_names=None):
 
     if len(winner_names) == 1:
         return (
-            f"By decree of Bub, {winner_names[0]} takes the crown with "
+            f"By decree of SF Stats, {winner_names[0]} takes the crown with "
             f"{top_points} point{'s' if top_points != 1 else ''}."
         )
 
     joined_winners = ", ".join(winner_names)
     return (
-        f"By decree of Bub, the crown is shared by {joined_winners} at "
+        f"By decree of SF Stats, the crown is shared by {joined_winners} at "
         f"{top_points} point{'s' if top_points != 1 else ''} each."
     )
 
@@ -1896,7 +1897,7 @@ def _quiz_timeout_expiry_message(pending_state):
     crown_line = _quiz_build_crown_line(scores, score_names)
     score_text = _format_quiz_scores(scores, score_names)
     return (
-        "By decree of Bub, the 5-minute window for another question has closed.\n"
+        "By decree of SF Stats, the 5-minute window for another question has closed.\n"
         f"{crown_line}\n"
         f"{score_text}"
     )

@@ -14,6 +14,7 @@ import discord
 
 from bubbot.runtime import decisions
 from bubbot.utils.choice_utils import character_choices
+from bubbot.utils.sfstats_style import BRAND
 
 # Columns a ranking can use, with how the model should read them. A game offers the ones its table fills.
 METRICS = {
@@ -183,10 +184,10 @@ def embed(ranking):
     result = discord.Embed(
         title=f"{direction} {name} · {scope} ({ranking.game.label})"[:256],
         description="\n".join(lines)[:4000] or "No moves have that number.",
-        color=0x5865F2,
+        color=BRAND,
     )
     footer = f"{filters} · " if filters else ""
-    result.set_footer(text=f"{footer}From Bub's frame data · ask for any move to see its full card")
+    result.set_footer(text=f"{footer}From SF Stats frame data · ask for any move to see its full card")
     return result
 
 

@@ -1,14 +1,19 @@
-"""Discord /bub menu: game/char/move selectors, frame results, combos, quiz launch."""
+"""Discord /sfstatsmenu menu: game/char/move selectors, frame results, combos, quiz launch.
+
+Menus are SF Stats cards (``MenuView``, see bubbot.utils.sfstats_style) and results stay embeds.
+A card can't become an embed, so menus only edit into menus (``_show_menu``), picking a result
+posts it as a new message, and a result's buttons open menus as new private cards (``_open_menu``).
+"""
 
 import io
 import math
-import os
 import re
 
 import discord
 
-from bubbot.features.fg_glossary import build_glossary_definition_embed, build_glossary_embed, build_glossary_link_button, normalize_glossary_term
+from bubbot.features.fg_glossary import build_glossary_definition_embed, build_glossary_link_button, normalize_glossary_term
 from bubbot.utils.choice_utils import character_choices, move_choices
+from bubbot.utils.sfstats_style import ACTION, ACTIVE, DIVIDER, CardView, card_text, embed_card_blocks, label_icon
 
 FRAME_DATA = {}
 FRAME_STATS = {}
@@ -136,41 +141,71 @@ def configure(
 
 MENU_SELECT_LIMIT = 25
 
-# Full display names for menu dropdown and embed titles (no abbreviations)
+# Full display names for menu dropdown and card titles (no abbreviations)
 MENU_GAMES = (
-    ("avtl", "Avatar Legends", 0x2E8B57),
-    ("tuco", "2XKO", 0xD63C2F),
-    ("bbcf", "BlazBlue Central Fiction", 0x1B5FA7),
-    ("cotw", "Fatal Fury: City of the Wolves", 0xD8A234),
-    ("ggacr", "Guilty Gear Accent Core Plus R", 0x5C1F8A),
-    ("ggst", "Guilty Gear Strive", 0x7A2BFF),
-    ("mk1", "Mortal Kombat 1", 0x7E1616),
-    ("sf6", "Street Fighter 6", 0x3998C6),
-    ("third_strike", "Street Fighter III: 3rd Strike", 0xC0392B),
-    ("usf4", "Ultra Street Fighter IV", 0x8E2727),
-    ("sfv", "Street Fighter V", 0xD0342C),
+    ("avtl", "Avatar Legends"),
+    ("tuco", "2XKO"),
+    ("bbcf", "BlazBlue Central Fiction"),
+    ("cotw", "Fatal Fury: City of the Wolves"),
+    ("ggacr", "Guilty Gear Accent Core Plus R"),
+    ("ggst", "Guilty Gear Strive"),
+    ("mk1", "Mortal Kombat 1"),
+    ("sf6", "Street Fighter 6"),
+    ("third_strike", "Street Fighter III: 3rd Strike"),
+    ("usf4", "Ultra Street Fighter IV"),
+    ("sfv", "Street Fighter V"),
 )
-_MENU_GAME_LABELS = {key: label for key, label, _colour in MENU_GAMES}
-_MENU_GAME_COLOURS = {key: colour for key, label, colour in MENU_GAMES}
+_MENU_GAME_LABELS = dict(MENU_GAMES)
 
 
-# Base view: owner lock for public /bub menu
+# Base views: owner lock for menus and the results they open
+async def _owner_allows(view, interaction):
+    if not view.menu_locked or view.owner_id is None or interaction.user.id == view.owner_id:
+        return True
+    await interaction.response.send_message(
+        "Only the person who opened this menu can control it.",
+        ephemeral=True,
+    )
+    return False
+
+
 class OwnedView(discord.ui.View):
+    """Buttons on a result (an embed)."""
+
     def __init__(self, owner_id, *, menu_locked=False, timeout=None):
         super().__init__(timeout=timeout)
         self.owner_id = owner_id
         self.menu_locked = bool(menu_locked)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if not self.menu_locked:
-            return True
-        if self.owner_id is None or interaction.user.id == self.owner_id:
-            return True
-        await interaction.response.send_message(
-            "Only the person who opened this menu can control it.",
-            ephemeral=True,
-        )
-        return False
+        return await _owner_allows(self, interaction)
+
+
+class MenuView(CardView):
+    """A menu: an SF Stats card with its controls below."""
+
+    def __init__(self, owner_id, *, menu_locked=False, timeout=None):
+        super().__init__(timeout=timeout)
+        self.owner_id = owner_id
+        self.menu_locked = bool(menu_locked)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await _owner_allows(self, interaction)
+
+
+async def _show_menu(interaction, view):
+    """Replace the menu this interaction came from with another menu."""
+    await interaction.response.edit_message(view=view, attachments=[])
+
+
+async def _open_menu(interaction, view):
+    """From a result: it stays an embed, so the menu opens as a new card only the clicker sees."""
+    await interaction.response.send_message(view=view, ephemeral=True)
+
+
+def _notice_menu(owner_id, *lines, title=None):
+    """A menu with no controls left: what happened, as one short card."""
+    return MenuView(owner_id, menu_locked=True).set_card(card_text(title, *lines))
 
 
 def _menu_locked_owner_id(view):
@@ -198,11 +233,7 @@ def _game_menu_view(game, owner_id):
 
 
 async def _edit_to_game_menu(interaction, game, owner_id):
-    await interaction.response.edit_message(
-        embed=_game_menu_embed(_game_label(game), _game_colour(game)),
-        view=_game_menu_view(game, owner_id),
-        attachments=[],
-    )
+    await _show_menu(interaction, _game_menu_view(game, owner_id))
 
 
 async def _open_framedata_character_select(interaction, game, owner_id, *, compare_row=None, compare_char_key=None):
@@ -210,22 +241,9 @@ async def _open_framedata_character_select(interaction, game, owner_id, *, compa
     if not chars:
         await interaction.response.send_message("No character data loaded.", ephemeral=True)
         return
-    await interaction.response.edit_message(
-        embed=_character_select_embed(
-            game,
-            page=0,
-            total_pages=max(1, math.ceil(len(chars) / MENU_SELECT_LIMIT)),
-            compare_row=compare_row,
-        ),
-        view=CharacterSelectView(
-            game,
-            chars,
-            owner_id,
-            page=0,
-            compare_row=compare_row,
-            compare_char_key=compare_char_key,
-        ),
-        attachments=[],
+    await _show_menu(
+        interaction,
+        CharacterSelectView(game, chars, owner_id, page=0, compare_row=compare_row, compare_char_key=compare_char_key),
     )
 
 
@@ -234,25 +252,11 @@ async def _open_sf6_stats_character_select(interaction, owner_id):
     if not chars:
         await interaction.response.send_message("No character stats loaded.", ephemeral=True)
         return
-    await interaction.response.edit_message(
-        embed=_character_select_embed(
-            "sf6",
-            page=0,
-            total_pages=max(1, math.ceil(len(chars) / MENU_SELECT_LIMIT)),
-            stats_mode=True,
-        ),
-        view=CharacterSelectView("sf6", chars, owner_id, page=0, stats_mode=True),
-        attachments=[],
-    )
+    await _show_menu(interaction, CharacterSelectView("sf6", chars, owner_id, page=0, stats_mode=True))
 
 
 async def _open_quiz_difficulty(interaction, game, owner_id):
-    game_label = _game_label(game)
-    await interaction.response.edit_message(
-        embed=_quiz_difficulty_embed(game_label),
-        view=QuizDifficultyView(game, owner_id),
-        attachments=[],
-    )
+    await _show_menu(interaction, QuizDifficultyView(game, owner_id))
 
 
 async def _open_combo_character_select(interaction, game, owner_id):
@@ -262,12 +266,7 @@ async def _open_combo_character_select(interaction, game, owner_id):
     if not chars:
         await interaction.response.send_message(f"No {combo_data.game_label(game)} combo data loaded.", ephemeral=True)
         return
-    total_pages = max(1, math.ceil(len(chars) / MENU_SELECT_LIMIT))
-    await interaction.response.edit_message(
-        embed=_combo_character_select_embed(game, page=0, total_pages=total_pages),
-        view=ComboCharacterSelectView(game, chars, owner_id, page=0),
-        attachments=[],
-    )
+    await _show_menu(interaction, ComboCharacterSelectView(game, chars, owner_id, page=0))
 
 
 async def _open_game_combos_menu(interaction, game, owner_id):
@@ -275,14 +274,9 @@ async def _open_game_combos_menu(interaction, game, owner_id):
 
     game_key = str(game or "").strip().lower()
     if game_key not in combo_data.COMBO_GAMES:
-        await interaction.response.edit_message(
-            embed=discord.Embed(
-                title=f"{_game_label(game_key)} - Combos",
-                description="Combos will be added to the scrolls soon.",
-                colour=_game_colour(game_key),
-            ),
-            view=BackToGameMenuView(game_key, owner_id),
-            attachments=[],
+        await _show_menu(
+            interaction,
+            BackToGameMenuView(game_key, owner_id, card_text(f"{_game_label(game_key)} · Combos", "Combos will be added to the scrolls soon.")),
         )
         return
     combo_data.ensure_combo_data_loaded(game_key)
@@ -290,21 +284,21 @@ async def _open_game_combos_menu(interaction, game, owner_id):
         await _open_combo_character_select(interaction, game_key, owner_id)
         return
     missing_file = combo_data.SF6_COMBOS_FILE if game_key == "sf6" else combo_data.MK1_COMBOS_FILE
-    await interaction.response.edit_message(
-        embed=discord.Embed(
-            title=f"{combo_data.game_label(game_key)} - Combos",
-            description=(
-                f"Combo data did not load. Deploy `{missing_file}` next to `bot.py` on the server "
-                f"and restart the `bub` service."
+    await _show_menu(
+        interaction,
+        BackToGameMenuView(
+            game_key,
+            owner_id,
+            card_text(
+                f"{combo_data.game_label(game_key)} · Combos",
+                "Combo data did not load.",
+                footer=f"Deploy `{missing_file}` next to `bot.py` on the server and restart the bot",
             ),
-            colour=0xFF4444,
         ),
-        view=BackToGameMenuView(game_key, owner_id),
-        attachments=[],
     )
 
 
-async def _show_sf6_stats_embed(interaction, char_key, owner_id, stat_keys=None):
+async def _post_sf6_stats(interaction, char_key, owner_id, stat_keys=None):
     stats_row = FRAME_STATS.get(char_key)
     if not stats_row:
         await interaction.response.send_message("No stats loaded for this character.", ephemeral=True)
@@ -313,10 +307,10 @@ async def _show_sf6_stats_embed(interaction, char_key, owner_id, stat_keys=None)
 
     embed = build_character_stats_embed(char_key, stats_row, stat_keys)
     view = StatsResultView(char_key, owner_id, stat_keys=stat_keys, menu_locked=True)
-    await interaction.response.edit_message(embed=embed, view=view, attachments=[])
+    await interaction.response.send_message(embed=embed, view=view)
 
 
-async def _show_sf6_stats_compare_embed(interaction, char_key_a, char_key_b, owner_id, stat_keys=None, *, menu_locked=True):
+async def _post_sf6_stats_compare(interaction, char_key_a, char_key_b, owner_id, stat_keys=None, *, menu_locked=True):
     stats_a = FRAME_STATS.get(char_key_a)
     stats_b = FRAME_STATS.get(char_key_b)
     if not stats_a or not stats_b:
@@ -332,7 +326,7 @@ async def _show_sf6_stats_compare_embed(interaction, char_key_a, char_key_b, own
         compare_char_key=char_key_b,
         menu_locked=menu_locked,
     )
-    await interaction.response.edit_message(embed=embed, view=view, attachments=[])
+    await interaction.response.send_message(embed=embed, view=view)
 
 
 def _ggst_character_list():
@@ -421,10 +415,6 @@ def parse_game_only_mention(text):
 
 def _game_label(game):
     return _MENU_GAME_LABELS.get(str(game or "").strip().lower(), str(game or "").replace("_", " ").title())
-
-
-def _game_colour(game):
-    return _MENU_GAME_COLOURS.get(str(game or "").strip().lower(), 0xAAAAAA)
 
 
 def _character_list(game):
@@ -615,7 +605,7 @@ def _row_character_key(game, row, fallback=None):
 # Frame result helpers and compare buttons
 class StatsCompareButton(discord.ui.Button):
     def __init__(self, char_key, owner_id, stat_keys=None):
-        super().__init__(label="Compare", style=discord.ButtonStyle.success)
+        super().__init__(label="Compare", style=ACTION, emoji=label_icon("Compare"))
         self.char_key = char_key
         self.owner_id = owner_id
         self.stat_keys = tuple(stat_keys) if stat_keys else None
@@ -631,20 +621,9 @@ class StatsCompareButton(discord.ui.Button):
         if not chars:
             await interaction.response.send_message("No character stats loaded.", ephemeral=True)
             return
-        from bubbot.frame_data.sf6_character_stats import display_character_name
-
-        stats_row = FRAME_STATS.get(self.char_key) or {}
-        compare_label = display_character_name(self.char_key, stats_row)
-        await interaction.response.edit_message(
-            embed=_character_select_embed(
-                "sf6",
-                page=0,
-                total_pages=max(1, math.ceil(len(chars) / MENU_SELECT_LIMIT)),
-                stats_mode=True,
-                compare_char_key=self.char_key,
-                compare_stat_label=compare_label,
-            ),
-            view=CharacterSelectView(
+        await _open_menu(
+            interaction,
+            CharacterSelectView(
                 "sf6",
                 chars,
                 _menu_locked_owner_id(self.view) or interaction.user.id,
@@ -654,13 +633,12 @@ class StatsCompareButton(discord.ui.Button):
                 compare_stat_keys=self.stat_keys,
                 menu_locked=getattr(self.view, "menu_locked", False),
             ),
-            attachments=[],
         )
 
 
 class CompareFrameButton(discord.ui.Button):
     def __init__(self, game, row, owner_id, char_key=None):
-        super().__init__(label="Compare", style=discord.ButtonStyle.success)
+        super().__init__(label="Compare", style=ACTION, emoji=label_icon("Compare"))
         self.game = game
         self.frame_row = row
         self.owner_id = owner_id
@@ -681,14 +659,9 @@ class CompareFrameButton(discord.ui.Button):
         if not chars:
             await interaction.response.send_message("No characters found for this game.", ephemeral=True)
             return
-        await interaction.response.edit_message(
-            embed=_character_select_embed(
-                self.game,
-                page=0,
-                total_pages=max(1, math.ceil(len(chars) / MENU_SELECT_LIMIT)),
-                compare_row=self.frame_row,
-            ),
-            view=CharacterSelectView(
+        await _open_menu(
+            interaction,
+            CharacterSelectView(
                 self.game,
                 chars,
                 _menu_locked_owner_id(self.view) or interaction.user.id,
@@ -697,38 +670,28 @@ class CompareFrameButton(discord.ui.Button):
                 compare_char_key=char_key,
                 menu_locked=getattr(self.view, "menu_locked", False),
             ),
-            attachments=[],
         )
 
 
 class FrameReturnMenuButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Return to Menu", style=discord.ButtonStyle.primary, custom_id="frame_return_menu", row=1)
+        super().__init__(label="Return to Menu", style=ACTION, custom_id="frame_return_menu", row=1)
 
     async def callback(self, interaction: discord.Interaction):
         menu_owner = getattr(self.view, "owner_id", None) if getattr(self.view, "menu_locked", False) else interaction.user.id
-        await interaction.response.edit_message(
-            embed=_main_menu_embed(),
-            view=MainMenuView(menu_owner),
-            attachments=[],
-        )
+        await _open_menu(interaction, MainMenuView(menu_owner))
 
 
 class FrameBackToMovesButton(discord.ui.Button):
     def __init__(self, game, char_key):
-        super().__init__(label="Back to Moves", style=discord.ButtonStyle.danger, custom_id="frame_back_moves", row=1)
+        super().__init__(label="Back to Moves", style=ACTION, emoji=label_icon("Back"), custom_id="frame_back_moves", row=1)
         self.game = game
         self.char_key = char_key
 
     async def callback(self, interaction: discord.Interaction):
         moves = _move_list(self.game, self.char_key)
-        display = _character_display_name(self.game, self.char_key)
         owner_id = _menu_locked_owner_id(self.view) or interaction.user.id
-        await interaction.response.edit_message(
-            embed=_move_select_embed(display, page=0, total_pages=max(1, math.ceil(len(moves) / MENU_SELECT_LIMIT))),
-            view=MoveSelectView(self.game, self.char_key, moves, owner_id, page=0, menu_locked=True),
-            attachments=[],
-        )
+        await _open_menu(interaction, MoveSelectView(self.game, self.char_key, moves, owner_id, page=0, menu_locked=True))
 
 
 def build_frame_result_view(
@@ -812,10 +775,10 @@ class MainGameSelect(discord.ui.Select):
     def __init__(self, owner_id):
         options = [
             discord.SelectOption(label=label, value=game_key)
-            for game_key, label, _colour in MENU_GAMES
+            for game_key, label in MENU_GAMES
         ]
         super().__init__(
-            placeholder="Choose a game...",
+            placeholder="Choose a game",
             min_values=1,
             max_values=1,
             options=options,
@@ -824,69 +787,48 @@ class MainGameSelect(discord.ui.Select):
         self.owner_id = owner_id
 
     async def callback(self, interaction: discord.Interaction):
-        game = self.values[0]
-        label = _game_label(game)
-        colour = _game_colour(game)
-        view = SF6GameMenuView(self.owner_id) if game == "sf6" else GameMenuView(game, self.owner_id)
-        await interaction.response.edit_message(
-            embed=_game_menu_embed(label, colour),
-            view=view,
-            attachments=[],
-        )
+        await _show_menu(interaction, _game_menu_view(self.values[0], self.owner_id))
 
 
-class MainMenuView(OwnedView):
+class MainMenuView(MenuView):
     def __init__(self, owner_id):
         super().__init__(owner_id=owner_id, menu_locked=True, timeout=None)
         self.add_item(MainGameSelect(owner_id))
+        self.set_card(_main_menu_card())
 
-    @discord.ui.button(label="Readme", style=discord.ButtonStyle.success, custom_id="menu_readme", row=1)
+    @discord.ui.button(label="Readme", style=ACTION, custom_id="menu_readme", row=1)
     async def readme_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=build_readme_embed(),
-            view=ReadmeView(self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, ReadmeView(self.owner_id))
 
-    @discord.ui.button(label="Glossary", style=discord.ButtonStyle.primary, custom_id="menu_glossary", row=1)
+    @discord.ui.button(label="Glossary", style=ACTION, custom_id="menu_glossary", row=1)
     async def glossary_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=build_glossary_embed(),
-            view=GlossaryMenuView(self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, GlossaryMenuView(self.owner_id))
 
 
-class ReadmeView(OwnedView):
+class ReadmeView(MenuView):
     def __init__(self, owner_id):
         super().__init__(owner_id=owner_id, menu_locked=True, timeout=None)
+        self.set_card(*readme_blocks())
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, custom_id="readme_back")
+    @discord.ui.button(label="Back", style=ACTION, custom_id="readme_back")
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=_main_menu_embed(),
-            view=MainMenuView(self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, MainMenuView(self.owner_id))
 
 
-class GlossaryMenuView(OwnedView):
+class GlossaryMenuView(MenuView):
     def __init__(self, owner_id, term=None):
         super().__init__(owner_id=owner_id, menu_locked=True, timeout=None)
         self.term = normalize_glossary_term(term)
         self.add_item(build_glossary_link_button(self.term))
+        self.set_card(*embed_card_blocks(build_glossary_definition_embed(self.term)))
 
-    @discord.ui.button(label="Search Term", style=discord.ButtonStyle.primary, custom_id="glossary_search", row=1)
+    @discord.ui.button(label="Search Term", style=ACTIVE, custom_id="glossary_search", row=1)
     async def search_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(GlossarySearchModal(self.owner_id))
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, custom_id="glossary_back", row=1)
+    @discord.ui.button(label="Back", style=ACTION, custom_id="glossary_back", row=1)
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=_main_menu_embed(),
-            view=MainMenuView(self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, MainMenuView(self.owner_id))
 
 
 class GlossarySearchModal(discord.ui.Modal):
@@ -905,72 +847,61 @@ class GlossarySearchModal(discord.ui.Modal):
         if interaction.user.id != self.owner_id:
             await interaction.response.send_message("Only the person who opened this menu can search it.", ephemeral=True)
             return
-        term = normalize_glossary_term(self.query.value)
-        await interaction.response.edit_message(
-            embed=build_glossary_definition_embed(term),
-            view=GlossaryMenuView(self.owner_id, term),
-            attachments=[],
-        )
+        await _show_menu(interaction, GlossaryMenuView(self.owner_id, self.query.value))
 
 
-class GameMenuView(OwnedView):
+class GameMenuView(MenuView):
     def __init__(self, game, owner_id):
         super().__init__(owner_id=owner_id, menu_locked=True, timeout=None)
         self.game = game
+        self.set_card(_game_menu_card(game))
 
-    @discord.ui.button(label="Frame Data", style=discord.ButtonStyle.primary, custom_id="game_framedata", row=0)
+    @discord.ui.button(label="Frame Data", style=ACTIVE, custom_id="game_framedata", row=0)
     async def framedata_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _open_framedata_character_select(interaction, self.game, self.owner_id)
 
-    @discord.ui.button(label="Combos", style=discord.ButtonStyle.primary, custom_id="game_combos", row=0)
+    @discord.ui.button(label="Combos", style=ACTION, custom_id="game_combos", row=0)
     async def combos_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _open_game_combos_menu(interaction, self.game, self.owner_id)
 
-    @discord.ui.button(label="Quiz", style=discord.ButtonStyle.success, custom_id="game_quiz", row=0)
+    @discord.ui.button(label="Quiz", style=ACTION, custom_id="game_quiz", row=0)
     async def quiz_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _open_quiz_difficulty(interaction, self.game, self.owner_id)
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, custom_id="game_back", row=0)
+    @discord.ui.button(label="Back", style=ACTION, custom_id="game_back", row=0)
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=_main_menu_embed(),
-            view=MainMenuView(self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, MainMenuView(self.owner_id))
 
 
-class SF6GameMenuView(OwnedView):
+class SF6GameMenuView(MenuView):
     def __init__(self, owner_id):
         super().__init__(owner_id=owner_id, menu_locked=True, timeout=None)
         self.game = "sf6"
+        self.set_card(_game_menu_card(self.game))
 
-    @discord.ui.button(label="Frame Data", style=discord.ButtonStyle.primary, custom_id="sf6_game_framedata", row=0)
+    @discord.ui.button(label="Frame Data", style=ACTIVE, custom_id="sf6_game_framedata", row=0)
     async def framedata_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _open_framedata_character_select(interaction, self.game, self.owner_id)
 
-    @discord.ui.button(label="Stats", style=discord.ButtonStyle.primary, custom_id="sf6_game_stats", row=0)
+    @discord.ui.button(label="Stats", style=ACTION, custom_id="sf6_game_stats", row=0)
     async def stats_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _open_sf6_stats_character_select(interaction, self.owner_id)
 
-    @discord.ui.button(label="Combos", style=discord.ButtonStyle.primary, custom_id="sf6_game_combos", row=0)
+    @discord.ui.button(label="Combos", style=ACTION, custom_id="sf6_game_combos", row=0)
     async def combos_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _open_game_combos_menu(interaction, self.game, self.owner_id)
 
-    @discord.ui.button(label="Quiz", style=discord.ButtonStyle.success, custom_id="sf6_game_quiz", row=0)
+    @discord.ui.button(label="Quiz", style=ACTION, custom_id="sf6_game_quiz", row=0)
     async def quiz_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await _open_quiz_difficulty(interaction, self.game, self.owner_id)
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, custom_id="sf6_game_back", row=0)
+    @discord.ui.button(label="Back", style=ACTION, custom_id="sf6_game_back", row=0)
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=_main_menu_embed(),
-            view=MainMenuView(self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, MainMenuView(self.owner_id))
 
 
 # Character and move select views (paginated Discord selects)
-class CharacterSelectView(OwnedView):
+class CharacterSelectView(MenuView):
     def __init__(
         self,
         game,
@@ -982,6 +913,7 @@ class CharacterSelectView(OwnedView):
         stats_mode=False,
         compare_stat_keys=None,
         menu_locked=True,
+        search_query=None,
     ):
         super().__init__(owner_id=owner_id, menu_locked=menu_locked, timeout=None)
         self.game = game
@@ -991,22 +923,34 @@ class CharacterSelectView(OwnedView):
         self.compare_char_key = compare_char_key
         self.stats_mode = stats_mode
         self.compare_stat_keys = compare_stat_keys
+        self.search_query = search_query
         self._add_select()
         self._update_page_buttons()
+        self.set_card(
+            _character_select_card(
+                game,
+                page,
+                self._page_count(),
+                search_query=search_query,
+                compare_row=compare_row,
+                stats_mode=stats_mode,
+                compare_stat_label=self._stats_compare_label(),
+            )
+        )
 
     def _page_count(self):
         return max(1, math.ceil(len(self.chars) / MENU_SELECT_LIMIT))
 
     def _update_page_buttons(self):
-        page_count = self._page_count()
-        previous_page = self.page - 1 if self.page > 0 else page_count - 1
-        next_page = self.page + 1 if self.page < page_count - 1 else 0
-        self.previous_button.label = f"Previous ({previous_page + 1}/{page_count})"
-        self.next_button.label = f"Next ({next_page + 1}/{page_count})"
+        single_page = self._page_count() == 1
+        self.previous_button.disabled = single_page
+        self.next_button.disabled = single_page
         if self.compare_row is not None:
             self.back_button.label = "Back to Moves"
         elif self.stats_mode and self.compare_char_key:
-            self.back_button.label = "Back to Stats"
+            # Opened privately from a stats card: there is nothing to go back to.
+            self.back_button.label = "Close"
+            self.back_button.emoji = label_icon("Close")
 
     def _add_select(self):
         start = self.page * MENU_SELECT_LIMIT
@@ -1039,43 +983,18 @@ class CharacterSelectView(OwnedView):
             stats_mode=self.stats_mode,
             compare_stat_keys=self.compare_stat_keys,
             menu_locked=self.menu_locked,
+            search_query=self.search_query,
         )
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Previous", style=ACTION, row=4)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        max_page = max(0, math.ceil(len(self.chars) / MENU_SELECT_LIMIT) - 1)
-        new_page = self.page - 1 if self.page > 0 else max_page
-        await interaction.response.edit_message(
-            embed=_character_select_embed(
-                self.game,
-                page=new_page,
-                total_pages=max_page + 1,
-                compare_row=self.compare_row,
-                stats_mode=self.stats_mode,
-                compare_char_key=self.compare_char_key,
-                compare_stat_label=self._stats_compare_label(),
-            ),
-            view=self._child_character_select_view(new_page),
-            attachments=[],
-        )
+        max_page = self._page_count() - 1
+        await _show_menu(interaction, self._child_character_select_view(self.page - 1 if self.page > 0 else max_page))
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Next", style=ACTION, row=4)
     async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        max_page = max(0, math.ceil(len(self.chars) / MENU_SELECT_LIMIT) - 1)
-        new_page = self.page + 1 if self.page < max_page else 0
-        await interaction.response.edit_message(
-            embed=_character_select_embed(
-                self.game,
-                page=new_page,
-                total_pages=max_page + 1,
-                compare_row=self.compare_row,
-                stats_mode=self.stats_mode,
-                compare_char_key=self.compare_char_key,
-                compare_stat_label=self._stats_compare_label(),
-            ),
-            view=self._child_character_select_view(new_page),
-            attachments=[],
-        )
+        max_page = self._page_count() - 1
+        await _show_menu(interaction, self._child_character_select_view(self.page + 1 if self.page < max_page else 0))
 
     def _stats_compare_label(self):
         if not self.stats_mode or not self.compare_char_key:
@@ -1085,7 +1004,7 @@ class CharacterSelectView(OwnedView):
         stats_row = FRAME_STATS.get(self.compare_char_key) or {}
         return display_character_name(self.compare_char_key, stats_row)
 
-    @discord.ui.button(label="Search", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Search", style=ACTION, row=4)
     async def search_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(
             CharacterSearchModal(
@@ -1099,46 +1018,28 @@ class CharacterSelectView(OwnedView):
             )
         )
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, row=4)
+    @discord.ui.button(label="Back", style=ACTION, row=4)
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.stats_mode and self.compare_char_key:
-            await _show_sf6_stats_embed(
-                interaction,
-                self.compare_char_key,
-                self.owner_id,
-                stat_keys=self.compare_stat_keys,
-            )
+            await _show_menu(interaction, _notice_menu(self.owner_id, "Compare closed."))
             return
         if self.compare_row is not None:
-            moves = _move_list(self.game, self.compare_char_key or self.chars[0][0])
-            display = _character_display_name(self.game, self.compare_char_key or self.chars[0][0])
-            await interaction.response.edit_message(
-                embed=_move_select_embed(
-                    display,
-                    page=0,
-                    total_pages=max(1, math.ceil(len(moves) / MENU_SELECT_LIMIT)),
-                    compare_row=self.compare_row,
-                ),
-                view=MoveSelectView(
+            char_key = self.compare_char_key or self.chars[0][0]
+            await _show_menu(
+                interaction,
+                MoveSelectView(
                     self.game,
-                    self.compare_char_key or self.chars[0][0],
-                    moves,
+                    char_key,
+                    _move_list(self.game, char_key),
                     self.owner_id,
                     page=0,
                     compare_row=self.compare_row,
                     compare_char_key=self.compare_char_key,
                     menu_locked=self.menu_locked,
                 ),
-                attachments=[],
             )
             return
-        game_label = _game_label(self.game)
-        colour = _game_colour(self.game)
-        await interaction.response.edit_message(
-            embed=_game_menu_embed(game_label, colour),
-            view=_game_menu_view(self.game, self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, _game_menu_view(self.game, self.owner_id))
 
 
 class CharacterSearchModal(discord.ui.Modal):
@@ -1177,24 +1078,9 @@ class CharacterSearchModal(discord.ui.Modal):
         if not filtered:
             await interaction.response.send_message("No characters matched that search.", ephemeral=True)
             return
-        compare_stat_label = None
-        if self.stats_mode and self.compare_char_key:
-            from bubbot.frame_data.sf6_character_stats import display_character_name
-
-            stats_row = FRAME_STATS.get(self.compare_char_key) or {}
-            compare_stat_label = display_character_name(self.compare_char_key, stats_row)
-        await interaction.response.edit_message(
-            embed=_character_select_embed(
-                self.game,
-                page=0,
-                total_pages=max(1, math.ceil(len(filtered) / MENU_SELECT_LIMIT)),
-                search_query=str(self.query.value).strip(),
-                compare_row=self.compare_row,
-                stats_mode=self.stats_mode,
-                compare_char_key=self.compare_char_key,
-                compare_stat_label=compare_stat_label,
-            ),
-            view=CharacterSelectView(
+        await _show_menu(
+            interaction,
+            CharacterSelectView(
                 self.game,
                 filtered,
                 self.owner_id,
@@ -1204,8 +1090,8 @@ class CharacterSearchModal(discord.ui.Modal):
                 stats_mode=self.stats_mode,
                 compare_stat_keys=self.compare_stat_keys,
                 menu_locked=self.menu_locked,
+                search_query=str(self.query.value).strip(),
             ),
-            attachments=[],
         )
 
 
@@ -1234,14 +1120,9 @@ class CharacterSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         char_key = self.values[0]
-        display = char_key.title()
-        for opt in self.options:
-            if opt.value == char_key:
-                display = opt.label
-                break
         if self.stats_mode:
             if self.compare_char_key:
-                await _show_sf6_stats_compare_embed(
+                await _post_sf6_stats_compare(
                     interaction,
                     self.compare_char_key,
                     char_key,
@@ -1250,20 +1131,15 @@ class CharacterSelect(discord.ui.Select):
                     menu_locked=getattr(self.view, "menu_locked", True),
                 )
             else:
-                await _show_sf6_stats_embed(interaction, char_key, self.view.owner_id)
+                await _post_sf6_stats(interaction, char_key, self.view.owner_id)
             return
         moves = _move_list(self.game, char_key)
         if not moves:
             await interaction.response.send_message("No moves found for this character.", ephemeral=True)
             return
-        await interaction.response.edit_message(
-            embed=_move_select_embed(
-                display,
-                page=0,
-                total_pages=max(1, math.ceil(len(moves) / MENU_SELECT_LIMIT)),
-                compare_row=self.compare_row,
-            ),
-            view=MoveSelectView(
+        await _show_menu(
+            interaction,
+            MoveSelectView(
                 self.game,
                 char_key,
                 moves,
@@ -1273,12 +1149,22 @@ class CharacterSelect(discord.ui.Select):
                 compare_char_key=self.compare_char_key,
                 menu_locked=getattr(self.view, "menu_locked", True),
             ),
-            attachments=[],
         )
 
 
-class MoveSelectView(OwnedView):
-    def __init__(self, game, char_key, moves, owner_id, page=0, compare_row=None, compare_char_key=None, menu_locked=True):
+class MoveSelectView(MenuView):
+    def __init__(
+        self,
+        game,
+        char_key,
+        moves,
+        owner_id,
+        page=0,
+        compare_row=None,
+        compare_char_key=None,
+        menu_locked=True,
+        search_query=None,
+    ):
         super().__init__(owner_id=owner_id, menu_locked=menu_locked, timeout=None)
         self.game = game
         self.char_key = char_key
@@ -1286,18 +1172,26 @@ class MoveSelectView(OwnedView):
         self.page = page
         self.compare_row = compare_row
         self.compare_char_key = compare_char_key
+        self.search_query = search_query
         self._add_select()
         self._update_page_buttons()
+        self.set_card(
+            _move_select_card(
+                _character_display_name(game, char_key),
+                page,
+                self._page_count(),
+                search_query=search_query,
+                compare_row=compare_row,
+            )
+        )
 
     def _page_count(self):
         return max(1, math.ceil(len(self.moves) / MENU_SELECT_LIMIT))
 
     def _update_page_buttons(self):
-        page_count = self._page_count()
-        previous_page = self.page - 1 if self.page > 0 else page_count - 1
-        next_page = self.page + 1 if self.page < page_count - 1 else 0
-        self.previous_button.label = f"Previous ({previous_page + 1}/{page_count})"
-        self.next_button.label = f"Next ({next_page + 1}/{page_count})"
+        single_page = self._page_count() == 1
+        self.previous_button.disabled = single_page
+        self.next_button.disabled = single_page
         if self.compare_row is not None:
             self.back_button.label = "Back to Characters"
 
@@ -1319,55 +1213,30 @@ class MoveSelectView(OwnedView):
         )
         self.add_item(select)
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, row=4)
+    def _child_move_select_view(self, page):
+        return MoveSelectView(
+            self.game,
+            self.char_key,
+            self.moves,
+            self.owner_id,
+            page=page,
+            compare_row=self.compare_row,
+            compare_char_key=self.compare_char_key,
+            menu_locked=self.menu_locked,
+            search_query=self.search_query,
+        )
+
+    @discord.ui.button(label="Previous", style=ACTION, row=4)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        max_page = max(0, math.ceil(len(self.moves) / MENU_SELECT_LIMIT) - 1)
-        new_page = self.page - 1 if self.page > 0 else max_page
-        await interaction.response.edit_message(
-            embed=_move_select_embed(
-                _character_display_name(self.game, self.char_key),
-                page=new_page,
-                total_pages=max_page + 1,
-                compare_row=self.compare_row,
-            ),
-            view=MoveSelectView(
-                self.game,
-                self.char_key,
-                self.moves,
-                self.owner_id,
-                page=new_page,
-                compare_row=self.compare_row,
-                compare_char_key=self.compare_char_key,
-                menu_locked=self.menu_locked,
-            ),
-            attachments=[],
-        )
+        max_page = self._page_count() - 1
+        await _show_menu(interaction, self._child_move_select_view(self.page - 1 if self.page > 0 else max_page))
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Next", style=ACTION, row=4)
     async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        max_page = max(0, math.ceil(len(self.moves) / MENU_SELECT_LIMIT) - 1)
-        new_page = self.page + 1 if self.page < max_page else 0
-        await interaction.response.edit_message(
-            embed=_move_select_embed(
-                _character_display_name(self.game, self.char_key),
-                page=new_page,
-                total_pages=max_page + 1,
-                compare_row=self.compare_row,
-            ),
-            view=MoveSelectView(
-                self.game,
-                self.char_key,
-                self.moves,
-                self.owner_id,
-                page=new_page,
-                compare_row=self.compare_row,
-                compare_char_key=self.compare_char_key,
-                menu_locked=self.menu_locked,
-            ),
-            attachments=[],
-        )
+        max_page = self._page_count() - 1
+        await _show_menu(interaction, self._child_move_select_view(self.page + 1 if self.page < max_page else 0))
 
-    @discord.ui.button(label="Search", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Search", style=ACTION, row=4)
     async def search_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(
             MoveSearchModal(
@@ -1380,26 +1249,19 @@ class MoveSelectView(OwnedView):
             )
         )
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, row=4)
+    @discord.ui.button(label="Back", style=ACTION, row=4)
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        chars = _character_list(self.game)
-        await interaction.response.edit_message(
-            embed=_character_select_embed(
+        await _show_menu(
+            interaction,
+            CharacterSelectView(
                 self.game,
-                page=0,
-                total_pages=max(1, math.ceil(len(chars) / MENU_SELECT_LIMIT)),
-                compare_row=self.compare_row,
-            ),
-            view=CharacterSelectView(
-                self.game,
-                chars,
+                _character_list(self.game),
                 self.owner_id,
                 page=0,
                 compare_row=self.compare_row,
                 compare_char_key=self.compare_char_key,
                 menu_locked=self.menu_locked,
             ),
-            attachments=[],
         )
 
 
@@ -1429,16 +1291,9 @@ class MoveSearchModal(discord.ui.Modal):
         if not filtered:
             await interaction.response.send_message("No moves matched that search.", ephemeral=True)
             return
-        display = _character_display_name(self.game, self.char_key)
-        await interaction.response.edit_message(
-            embed=_move_select_embed(
-                display,
-                page=0,
-                total_pages=max(1, math.ceil(len(filtered) / MENU_SELECT_LIMIT)),
-                search_query=str(self.query.value).strip(),
-                compare_row=self.compare_row,
-            ),
-            view=MoveSelectView(
+        await _show_menu(
+            interaction,
+            MoveSelectView(
                 self.game,
                 self.char_key,
                 filtered,
@@ -1447,8 +1302,8 @@ class MoveSearchModal(discord.ui.Modal):
                 compare_row=self.compare_row,
                 compare_char_key=self.compare_char_key,
                 menu_locked=self.menu_locked,
+                search_query=str(self.query.value).strip(),
             ),
-            attachments=[],
         )
 
 
@@ -1469,28 +1324,11 @@ class MoveSelect(discord.ui.Select):
         if selected_char != self.char_key:
             await interaction.response.send_message("That move list is stale. Pick the character again.", ephemeral=True)
             return
-        idx = int(raw_idx)
-        row, label = self.moves[idx]
-        if self.compare_row is not None:
-            await interaction.response.defer()
-            await _edit_frame_result_message(
-                interaction.message,
-                self.game,
-                self.compare_char_key or self.char_key,
-                self.compare_row,
-                self.view.owner_id,
-            )
-            sent = await _send_frame_result_message(
-                interaction.channel,
-                self.game,
-                self.char_key,
-                row,
-                self.view.owner_id,
-            )
-            return
+        row, _label = self.moves[int(raw_idx)]
+        # The card is posted below and the menu stays, so another move (or one to compare) is one pick away.
         view = build_frame_result_view(self.game, row, self.view.owner_id, self.char_key, menu_locked=True)
         await prepare_cotw_frame_view(view)
-        await interaction.response.edit_message(embed=view.build_embed(), view=view, attachments=view.initial_files())
+        await interaction.response.send_message(embed=view.build_embed(), view=view, files=view.initial_files())
 
 
 async def _send_frame_result_message(channel, game, char_key, row, owner_id):
@@ -1501,16 +1339,10 @@ async def _send_frame_result_message(channel, game, char_key, row, owner_id):
     return sent
 
 
-async def _edit_frame_result_message(message, game, char_key, row, owner_id):
-    view = build_frame_result_view(game, row, owner_id, char_key, menu_locked=True)
-    await prepare_cotw_frame_view(view)
-    await message.edit(embed=view.build_embed(), view=view, attachments=view.initial_files())
-
-
 # SF6 stats compare flow
 class StatsShowFramedataButton(discord.ui.Button):
     def __init__(self, char_key, owner_id):
-        super().__init__(label="Show Framedata", style=discord.ButtonStyle.primary)
+        super().__init__(label="Show Framedata", style=ACTION)
         self.char_key = char_key
         self.owner_id = owner_id
 
@@ -1525,14 +1357,9 @@ class StatsShowFramedataButton(discord.ui.Button):
         if not moves:
             await interaction.response.send_message("No moves found for this character.", ephemeral=True)
             return
-        display = _character_display_name("sf6", self.char_key)
-        await interaction.response.edit_message(
-            embed=_move_select_embed(
-                display,
-                page=0,
-                total_pages=max(1, math.ceil(len(moves) / MENU_SELECT_LIMIT)),
-            ),
-            view=MoveSelectView(
+        await _open_menu(
+            interaction,
+            MoveSelectView(
                 "sf6",
                 self.char_key,
                 moves,
@@ -1540,7 +1367,6 @@ class StatsShowFramedataButton(discord.ui.Button):
                 page=0,
                 menu_locked=getattr(self.view, "menu_locked", True),
             ),
-            attachments=[],
         )
 
 
@@ -1579,7 +1405,7 @@ class StatsResultView(OwnedView):
 
 class StatsBackToCharactersButton(discord.ui.Button):
     def __init__(self, char_key, owner_id):
-        super().__init__(label="Back to Characters", style=discord.ButtonStyle.danger, custom_id="stats_back_characters", row=1)
+        super().__init__(label="Back to Characters", style=ACTION, emoji=label_icon("Back"), custom_id="stats_back_characters", row=1)
         self.char_key = char_key
         self.owner_id = owner_id
 
@@ -1588,16 +1414,7 @@ class StatsBackToCharactersButton(discord.ui.Button):
         if not chars:
             await interaction.response.send_message("No character stats loaded.", ephemeral=True)
             return
-        await interaction.response.edit_message(
-            embed=_character_select_embed(
-                "sf6",
-                page=0,
-                total_pages=max(1, math.ceil(len(chars) / MENU_SELECT_LIMIT)),
-                stats_mode=True,
-            ),
-            view=CharacterSelectView("sf6", chars, self.owner_id, page=0, stats_mode=True, menu_locked=True),
-            attachments=[],
-        )
+        await _open_menu(interaction, CharacterSelectView("sf6", chars, self.owner_id, page=0, stats_mode=True, menu_locked=True))
 
 
 def _preferred_frame_image_url(game, row):
@@ -1655,19 +1472,6 @@ class FrameResultView(OwnedView):
         self.show_stats = False
         if game == "sf6":
             from bubbot.frame_data.frame_output import SF6NotesButton, SF6ShowStatsButton
-            from bubbot.frame_data.gif_lookup import (
-                get_existing_local_gif_asset_paths,
-                get_first_remote_gif_url,
-                get_frame_row_gif_links,
-            )
-            self.gif_links = list(get_frame_row_gif_links(row) or [])
-            self.default_gif_url = get_first_remote_gif_url(self.gif_links)
-            asset_paths = (
-                get_existing_local_gif_asset_paths(self.gif_links, limit=1)
-                if self.gif_links and not self.default_gif_url
-                else []
-            )
-            self.default_gif_asset_path = asset_paths[0] if asset_paths else None
             self.character_stats = FRAME_STATS.get(char_key) or {}
             self.stats_button = SF6ShowStatsButton(disabled=not self.character_stats)
             self.notes_button = SF6NotesButton(row)
@@ -1757,25 +1561,7 @@ class FrameResultView(OwnedView):
                     build_character_stats_embed(self.char_key, self.character_stats),
                     self.game,
                 )
-            if getattr(self, "default_gif_url", ""):
-                return apply_game_source_footer(
-                    build_sf6_frame_embed(
-                        self.row,
-                        image_url_override=self.default_gif_url,
-                        show_notes=getattr(self, "show_notes", False),
-                    ),
-                    self.game,
-                )
-            if getattr(self, "default_gif_asset_path", None):
-                filename = os.path.basename(self.default_gif_asset_path)
-                return apply_game_source_footer(
-                    build_sf6_frame_embed(
-                        self.row,
-                        image_url_override=f"attachment://{filename}",
-                        show_notes=getattr(self, "show_notes", False),
-                    ),
-                    self.game,
-                )
+            # SuperCombo's hitbox image only (frame_output.get_sf6_move_image_url), never a GIF.
             return apply_game_source_footer(
                 build_sf6_frame_embed(self.row, show_notes=getattr(self, "show_notes", False)),
                 self.game,
@@ -1817,77 +1603,57 @@ class FrameResultView(OwnedView):
         files = source_icon_files(self.game, kind="frame")
         if self.game == "cotw" and getattr(self, "cotw_image_bytes", None) and getattr(self, "cotw_image_filename", None):
             files.append(discord.File(io.BytesIO(self.cotw_image_bytes), filename=self.cotw_image_filename))
-            return files
-        if self.game == "sf6" and getattr(self, "default_gif_asset_path", None):
-            filename = os.path.basename(self.default_gif_asset_path)
-            files.append(discord.File(self.default_gif_asset_path, filename=filename))
         return files
 
 
 # Quiz difficulty picker (launches quiz_module.start_quiz)
-class QuizDifficultyView(OwnedView):
+class QuizDifficultyView(MenuView):
     def __init__(self, game, owner_id):
         super().__init__(owner_id=owner_id, menu_locked=True, timeout=None)
         self.game = game
+        self.set_card(card_text(f"{_game_label(game)} · Quiz", "Pick a difficulty."))
 
-    @discord.ui.button(label="Easy", style=discord.ButtonStyle.success, custom_id="quiz_easy")
+    @discord.ui.button(label="Easy", style=ACTION, custom_id="quiz_easy")
     async def easy_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._start_quiz(interaction, "easy")
 
-    @discord.ui.button(label="Medium", style=discord.ButtonStyle.primary, custom_id="quiz_medium")
+    @discord.ui.button(label="Medium", style=ACTION, custom_id="quiz_medium")
     async def medium_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._start_quiz(interaction, "medium")
 
-    @discord.ui.button(label="Hard", style=discord.ButtonStyle.danger, custom_id="quiz_hard")
+    @discord.ui.button(label="Hard", style=ACTION, custom_id="quiz_hard")
     async def hard_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._start_quiz(interaction, "hard")
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, custom_id="quiz_back")
+    @discord.ui.button(label="Back", style=ACTION, custom_id="quiz_back")
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        game_label = _game_label(self.game)
-        colour = _game_colour(self.game)
-        await interaction.response.edit_message(
-            embed=_game_menu_embed(game_label, colour),
-            view=_game_menu_view(self.game, self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, _game_menu_view(self.game, self.owner_id))
 
     async def _start_quiz(self, interaction, difficulty):
         if quiz_module is None:
             await interaction.response.send_message("Quiz system is not available.", ephemeral=True)
             return
-        game_label = _game_label(self.game)
-        await interaction.response.edit_message(
-            embed=discord.Embed(
-                title="Quiz Started",
-                description=f"Starting **{difficulty}** quiz for **{game_label}**.\nGood luck!",
-                colour=0x00FF00,
-            ),
-            view=None,
-            attachments=[],
+        await _show_menu(
+            interaction,
+            _notice_menu(self.owner_id, f"A **{difficulty}** quiz is starting below. Good luck!", title=f"{_game_label(self.game)} · Quiz"),
         )
         fake_message = QuizFakeMessage(interaction)
         await quiz_module.start_quiz(fake_message, mode=difficulty, game=self.game)
 
 
-class BackToGameMenuView(OwnedView):
-    def __init__(self, game, owner_id):
+class BackToGameMenuView(MenuView):
+    def __init__(self, game, owner_id, card):
         super().__init__(owner_id=owner_id, menu_locked=True, timeout=None)
         self.game = game
+        self.set_card(card)
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, custom_id="combos_back")
+    @discord.ui.button(label="Back", style=ACTION, custom_id="combos_back")
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        game_label = _game_label(self.game)
-        colour = _game_colour(self.game)
-        await interaction.response.edit_message(
-            embed=_game_menu_embed(game_label, colour),
-            view=_game_menu_view(self.game, self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, _game_menu_view(self.game, self.owner_id))
 
 
 # Combo section and subsection navigation
-class ComboCharacterSelectView(OwnedView):
+class ComboCharacterSelectView(MenuView):
     def __init__(self, game, chars, owner_id, page=0):
         super().__init__(owner_id=owner_id, menu_locked=True, timeout=None)
         self.game = game
@@ -1895,16 +1661,15 @@ class ComboCharacterSelectView(OwnedView):
         self.page = page
         self._add_select()
         self._update_page_buttons()
+        self.set_card(_combo_character_select_card(game, page, self._page_count()))
 
     def _page_count(self):
         return max(1, math.ceil(len(self.chars) / MENU_SELECT_LIMIT))
 
     def _update_page_buttons(self):
-        page_count = self._page_count()
-        previous_page = self.page - 1 if self.page > 0 else page_count - 1
-        next_page = self.page + 1 if self.page < page_count - 1 else 0
-        self.previous_button.label = f"Previous ({previous_page + 1}/{page_count})"
-        self.next_button.label = f"Next ({next_page + 1}/{page_count})"
+        single_page = self._page_count() == 1
+        self.previous_button.disabled = single_page
+        self.next_button.disabled = single_page
 
     def _add_select(self):
         start = self.page * MENU_SELECT_LIMIT
@@ -1914,33 +1679,21 @@ class ComboCharacterSelectView(OwnedView):
         ]
         self.add_item(ComboCharacterSelect(self.game, self.chars, self.page, options))
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Previous", style=ACTION, row=4)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        max_page = max(0, math.ceil(len(self.chars) / MENU_SELECT_LIMIT) - 1)
+        max_page = self._page_count() - 1
         new_page = self.page - 1 if self.page > 0 else max_page
-        await interaction.response.edit_message(
-            embed=_combo_character_select_embed(self.game, page=new_page, total_pages=max_page + 1),
-            view=ComboCharacterSelectView(self.game, self.chars, self.owner_id, page=new_page),
-            attachments=[],
-        )
+        await _show_menu(interaction, ComboCharacterSelectView(self.game, self.chars, self.owner_id, page=new_page))
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Next", style=ACTION, row=4)
     async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        max_page = max(0, math.ceil(len(self.chars) / MENU_SELECT_LIMIT) - 1)
+        max_page = self._page_count() - 1
         new_page = self.page + 1 if self.page < max_page else 0
-        await interaction.response.edit_message(
-            embed=_combo_character_select_embed(self.game, page=new_page, total_pages=max_page + 1),
-            view=ComboCharacterSelectView(self.game, self.chars, self.owner_id, page=new_page),
-            attachments=[],
-        )
+        await _show_menu(interaction, ComboCharacterSelectView(self.game, self.chars, self.owner_id, page=new_page))
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, row=4)
+    @discord.ui.button(label="Back", style=ACTION, row=4)
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(
-            embed=_game_menu_embed(_game_label(self.game), _game_colour(self.game)),
-            view=_game_menu_view(self.game, self.owner_id),
-            attachments=[],
-        )
+        await _show_menu(interaction, _game_menu_view(self.game, self.owner_id))
 
 
 class ComboCharacterSelect(discord.ui.Select):
@@ -1958,14 +1711,10 @@ class ComboCharacterSelect(discord.ui.Select):
         if not sections:
             await interaction.response.send_message("No combos found for that character.", ephemeral=True)
             return
-        await interaction.response.edit_message(
-            embed=_combo_section_select_embed(self.game, char_key, page=0, total_pages=ComboSectionView.page_count(sections)),
-            view=ComboSectionView(self.game, char_key, sections, self.view.owner_id, page=0),
-            attachments=[],
-        )
+        await _show_menu(interaction, ComboSectionView(self.game, char_key, sections, self.view.owner_id, page=0))
 
 
-class ComboSectionView(OwnedView):
+class ComboSectionView(MenuView):
     """Buttons (one per SuperCombo page heading) that open that heading's combo list."""
 
     SECTIONS_PER_PAGE = 20
@@ -1978,6 +1727,7 @@ class ComboSectionView(OwnedView):
         self.page = page
         self.back_to = back_to
         self._build()
+        self.set_card(_combo_section_select_card(game, char_key, page, self.page_count(self.sections)))
 
     @classmethod
     def page_count(cls, sections):
@@ -2002,9 +1752,27 @@ class ComboSectionView(OwnedView):
         self.add_item(ComboSectionBackButton())
 
 
+async def _post_combo_list(interaction, view, rows, *, section, subsection=None):
+    """A section's combos are a result: posted below the menu, which stays."""
+    from bubbot.frame_data import combo_data
+
+    pages = combo_data.build_combo_pages(view.game, view.char_key, rows, section=section, subsection=subsection)
+    list_view = combo_data.ComboListView(
+        view.game,
+        view.char_key,
+        pages,
+        view.owner_id,
+        menu_locked=True,
+        section=section,
+        subsection=subsection,
+        back_to=view.back_to,
+    )
+    await interaction.response.send_message(embed=pages[0], view=list_view, files=list_view.message_attachments())
+
+
 class ComboSectionButton(discord.ui.Button):
     def __init__(self, section_label, label, row):
-        super().__init__(label=label, style=discord.ButtonStyle.secondary, row=row)
+        super().__init__(label=label, style=ACTION, row=row)
         self.section_label = section_label
 
     async def callback(self, interaction: discord.Interaction):
@@ -2013,9 +1781,9 @@ class ComboSectionButton(discord.ui.Button):
         view = self.view
         if combo_data.section_needs_subsection_menu(view.game, view.char_key, self.section_label):
             subsections = combo_data.combo_subsections(view.game, view.char_key, self.section_label)
-            await interaction.response.edit_message(
-                embed=_combo_subsection_select_embed(view.game, view.char_key, self.section_label),
-                view=ComboSubsectionView(
+            await _show_menu(
+                interaction,
+                ComboSubsectionView(
                     view.game,
                     view.char_key,
                     self.section_label,
@@ -2024,21 +1792,10 @@ class ComboSectionButton(discord.ui.Button):
                     page=0,
                     back_to=view.back_to,
                 ),
-                attachments=[],
             )
             return
         rows = combo_data.rows_for_section(view.game, view.char_key, self.section_label)
-        pages = combo_data.build_combo_pages(view.game, view.char_key, rows, section=self.section_label)
-        list_view = combo_data.ComboListView(
-            view.game,
-            view.char_key,
-            pages,
-            view.owner_id,
-            menu_locked=True,
-            section=self.section_label,
-            back_to=view.back_to,
-        )
-        await interaction.response.edit_message(embed=pages[0], view=list_view, attachments=[])
+        await _post_combo_list(interaction, view, rows, section=self.section_label)
 
 
 class ComboSectionPageButton(discord.ui.Button):
@@ -2046,25 +1803,20 @@ class ComboSectionPageButton(discord.ui.Button):
         page_count = ComboSectionView.page_count(sections)
         if direction == "prev":
             target = page - 1 if page > 0 else page_count - 1
-            label = f"Previous ({target + 1}/{page_count})"
+            label = "Previous"
         else:
             target = page + 1 if page < page_count - 1 else 0
-            label = f"Next ({target + 1}/{page_count})"
-        super().__init__(label=label, style=discord.ButtonStyle.primary, row=4)
+            label = "Next"
+        super().__init__(label=label, style=ACTION, row=4)
         self.game = game
         self.char_key = char_key
         self.sections = sections
         self.target = target
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.edit_message(
-            embed=_combo_section_select_embed(
-                self.game,
-                self.char_key,
-                page=self.target,
-                total_pages=ComboSectionView.page_count(self.sections),
-            ),
-            view=ComboSectionView(
+        await _show_menu(
+            interaction,
+            ComboSectionView(
                 self.game,
                 self.char_key,
                 self.sections,
@@ -2072,13 +1824,12 @@ class ComboSectionPageButton(discord.ui.Button):
                 page=self.target,
                 back_to=self.view.back_to,
             ),
-            attachments=[],
         )
 
 
 class ComboSectionBackButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Back", style=discord.ButtonStyle.danger, row=4)
+        super().__init__(label="Back", style=ACTION, row=4)
 
     async def callback(self, interaction: discord.Interaction):
         from bubbot.frame_data import combo_data
@@ -2088,18 +1839,10 @@ class ComboSectionBackButton(discord.ui.Button):
             await _edit_to_game_menu(interaction, view.game, view.owner_id)
             return
         chars = combo_data.combo_character_list(view.game)
-        await interaction.response.edit_message(
-            embed=_combo_character_select_embed(
-                view.game,
-                page=0,
-                total_pages=max(1, math.ceil(len(chars) / MENU_SELECT_LIMIT)),
-            ),
-            view=ComboCharacterSelectView(view.game, chars, view.owner_id, page=0),
-            attachments=[],
-        )
+        await _show_menu(interaction, ComboCharacterSelectView(view.game, chars, view.owner_id, page=0))
 
 
-class ComboSubsectionView(OwnedView):
+class ComboSubsectionView(MenuView):
     """Sub-heading buttons when a section has more than 10 combos."""
 
     SUBSECTIONS_PER_PAGE = 20
@@ -2113,6 +1856,7 @@ class ComboSubsectionView(OwnedView):
         self.page = page
         self.back_to = back_to
         self._build()
+        self.set_card(_combo_subsection_select_card(game, char_key, section_label, page, self.page_count(self.subsections)))
 
     @classmethod
     def page_count(cls, subsections):
@@ -2158,7 +1902,7 @@ class ComboSubsectionView(OwnedView):
 
 class ComboSubsectionButton(discord.ui.Button):
     def __init__(self, section_label, subsection_label, label, row):
-        super().__init__(label=label, style=discord.ButtonStyle.secondary, row=row)
+        super().__init__(label=label, style=ACTION, row=row)
         self.section_label = section_label
         self.subsection_label = subsection_label
 
@@ -2167,24 +1911,7 @@ class ComboSubsectionButton(discord.ui.Button):
 
         view = self.view
         rows = combo_data.rows_for_subsection(view.game, view.char_key, self.section_label, self.subsection_label)
-        pages = combo_data.build_combo_pages(
-            view.game,
-            view.char_key,
-            rows,
-            section=self.section_label,
-            subsection=self.subsection_label,
-        )
-        list_view = combo_data.ComboListView(
-            view.game,
-            view.char_key,
-            pages,
-            view.owner_id,
-            menu_locked=True,
-            section=self.section_label,
-            subsection=self.subsection_label,
-            back_to=view.back_to,
-        )
-        await interaction.response.edit_message(embed=pages[0], view=list_view, attachments=[])
+        await _post_combo_list(interaction, view, rows, section=self.section_label, subsection=self.subsection_label)
 
 
 class ComboSubsectionPageButton(discord.ui.Button):
@@ -2192,11 +1919,11 @@ class ComboSubsectionPageButton(discord.ui.Button):
         page_count = ComboSubsectionView.page_count(subsections)
         if direction == "prev":
             target = page - 1 if page > 0 else page_count - 1
-            label = f"Previous ({target + 1}/{page_count})"
+            label = "Previous"
         else:
             target = page + 1 if page < page_count - 1 else 0
-            label = f"Next ({target + 1}/{page_count})"
-        super().__init__(label=label, style=discord.ButtonStyle.primary, row=4)
+            label = "Next"
+        super().__init__(label=label, style=ACTION, row=4)
         self.game = game
         self.char_key = char_key
         self.section_label = section_label
@@ -2204,9 +1931,9 @@ class ComboSubsectionPageButton(discord.ui.Button):
         self.target = target
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.edit_message(
-            embed=_combo_subsection_select_embed(self.game, self.char_key, self.section_label),
-            view=ComboSubsectionView(
+        await _show_menu(
+            interaction,
+            ComboSubsectionView(
                 self.game,
                 self.char_key,
                 self.section_label,
@@ -2215,24 +1942,19 @@ class ComboSubsectionPageButton(discord.ui.Button):
                 page=self.target,
                 back_to=self.view.back_to,
             ),
-            attachments=[],
         )
 
 
 class ComboSubsectionBackButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Back", style=discord.ButtonStyle.danger, row=4)
+        super().__init__(label="Back", style=ACTION, row=4)
 
     async def callback(self, interaction: discord.Interaction):
         from bubbot.frame_data import combo_data
 
         view = self.view
         sections = combo_data.combo_sections(view.game, view.char_key)
-        await interaction.response.edit_message(
-            embed=_combo_section_select_embed(view.game, view.char_key, page=0, total_pages=ComboSectionView.page_count(sections)),
-            view=ComboSectionView(view.game, view.char_key, sections, view.owner_id, page=0, back_to=view.back_to),
-            attachments=[],
-        )
+        await _show_menu(interaction, ComboSectionView(view.game, view.char_key, sections, view.owner_id, page=0, back_to=view.back_to))
 
 
 class QuizFakeMessage:
@@ -2249,92 +1971,54 @@ class QuizFakeMessage:
         return await self.channel.send(content, **kwargs)
 
 
-# Menu embed builders and public send entrypoints
-def _main_menu_embed():
-    return discord.Embed(
-        title="Bub Menu",
-        description="Choose a game from the dropdown below, or open Readme for a quick tutorial.",
-        colour=0xFFD700,
+# Menu cards (SF Stats style) and public send entrypoints
+def _main_menu_card():
+    return card_text(
+        "SF Stats",
+        "Frame data, hitboxes, combos and quizzes for 11 fighting games.",
+        footer=["Pick a game below", "Readme for a quick guide", "player stats: `/help`"],
     )
 
 
-def build_readme_embed():
-    embed = discord.Embed(
-        title="Bub Readme",
-        description="A quick guide to using Bub for fighting-game frame data, images, menus, and quizzes.",
-        colour=0xFFD700,
-    )
-    embed.add_field(
-        name="1. Ask Naturally",
-        value=(
-            "Mention Bub, then type a character and move. Examples: `@Bub ryu 5hp`, "
-            "`@Bub ky far slash`, `@Bub amane 5b`, `@Bub ashrah heavens palm`. "
-            "You can add `framedata`, but most direct character+move queries do not need it."
-            "Disclaimer: Natural language processing is a WIP for games other than SF6. I recommend using the menu or slash commands for anything esoteric such as installs or stances"
-
+def readme_blocks():
+    """The /readme guide as SF Stats card blocks, laid out like SF Stats' own /help."""
+    return [
+        card_text(
+            "SF Stats",
+            "Street Fighter 6 player stats from sfstats.app, plus frame data, hitboxes, combos and quizzes for 11 fighting games.",
+            footer=["`/help` has the full player stats guide", "menus answer only the person who opened them"],
         ),
-        inline=False,
-    )
-    embed.add_field(
-        name="2. Use Game Tags When Needed",
-        value=(
-            "Shared names can be ambiguous. Add tags like `sfv`, `3s`, `ggst`, `ggacr`, `bbcf`, `cotw`, "
-            "`2xko`, `mk1`, or `avtl` when Bub needs context. Bare `guilty gear` defaults to Strive; "
-            "use `+r`, `plus r`, `gg +r`, `accent core`, `acpr`, or `guilty gear accent core` for Guilty Gear Accent Core Plus R. "
-            "Example: `@Bub 3s ken hadouken`."
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="3. Images, Notes, And Hitboxes",
-        value=(
-            "Ask for `hitbox`, `image`, `gif`, or `notes` when supported. Frame results show hitbox GIFs/images "
-            "automatically when available, and notes can be toggled with the Show Notes button. Some games "
-            "also expose `Show All Images` for multi-image moves."
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="4. Menus And Slash Commands",
-        value=(
-            "Use `/bub` for the guided menu (game picker dropdown), `@bub` alone for the main menu, "
-            "or `@bub` plus a game tag only (e.g. `@bub sf6`) to open that game's menu. "
-            "Slash commands include `/sf6`, `/sf6-stats` (SF6 stats), `/sf6-combos`, `/ggst`, `/ggacr`, `/bbcf`, `/cotw`, `/third-strike`, `/mk1`, `/mk1-combos`, `/avtl`, and `/glossary`. "
-            "Menus are locked to the user who opened them."
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="FG Glossary",
-        value=(
-            "Use `/glossary safe jump`, `@Bub glossary option select`, or the main menu Glossary button "
-            "to show a local glossary definition with a source link to Infil's Fighting Game Glossary."
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="5. Quiz And Compare",
-        value=(
-            "Each game menu has Combos (SF6/MK1) and Quiz. The SF6 menu also has Stats between Frame Data and Combos for character stat sheets. "
-            "Frame-data results can include a Compare button that lets you choose another move from the same game "
-            "and place the results side by side."
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="Need Help?",
-        value="If a valid fighting-game syntax query fails, use the Report Issue button with the exact query you used.",
-        inline=False,
-    )
-    return embed
+        DIVIDER,
+        "**Player stats**\n"
+        "`/profile` (also `/player`, `/cfn`) · rank, matchups, rating, habits and replays · `/me` · your own card\n"
+        "`/vs` · `/leaderboard` · `/server-leaderboard` · `/character` · `/replay` · `/queue` · `/alias`\n"
+        "`/link` · say which CFN profile is you in this server · right-click a member → **Apps** → *SF Stats profile* or *Compare with me*\n"
+        "Or just ask, like `@SF Stats my rank` · server admins: `/setup` for rank-up and replay posts",
+        "**Frame data**\n"
+        "Mention SF Stats, then a character and move: `@SF Stats ryu 5hp` · `@SF Stats ky far slash` · "
+        "`@SF Stats amane 5b` · `@SF Stats ashrah heavens palm`\n"
+        "Adding `framedata` is optional. Plain-language lookups are still a work in progress outside SF6: "
+        "use the menu or slash commands for installs, stances and other esoteric moves",
+        "**Game tags**\n"
+        "Add `sfv`, `3s`, `ggst`, `ggacr`, `bbcf`, `cotw`, `2xko`, `mk1` or `avtl` when a name could mean more than one game, "
+        "like `@SF Stats 3s ken hadouken`. Bare `guilty gear` means Strive; `+r`, `plus r`, `gg +r`, `accent core`, `acpr` "
+        "or `guilty gear accent core` mean Accent Core Plus R",
+        "**Images, notes and hitboxes**\n"
+        "Ask for `hitbox`, `image`, `gif` or `notes`. Cards show hitbox images when there are any; "
+        "Show Notes toggles notes, and some games add Show All Images for multi-image moves",
+        "**Menus and slash commands**\n"
+        "`/sfstatsmenu` · the frame data menu · `/sf6` · `/sf6-stats` · `/sf6-combos` · `/sfv` · `/usf4` · `/ggst` · "
+        "`/ggacr` · `/2xko` · `/bbcf` · `/cotw` · `/third-strike` · `/mk1` · `/mk1-combos` · `/avtl` · `/glossary`",
+        "**Glossary, quiz and compare**\n"
+        "`/glossary safe jump` or the menu's Glossary button · definitions from Infil's Fighting Game Glossary\n"
+        "Every game menu has Combos (SF6 and MK1) and a Quiz; SF6 also has Stats. Compare on a card puts another move from the same game next to it",
+        card_text(None, footer="Something wrong? Use Report Issue on the card, with the exact query you used"),
+    ]
 
 
-def _game_menu_embed(game_label, colour):
-    return discord.Embed(
-        title=f"{game_label}",
-        description="Select a feature.",
-        colour=colour,
-    )
+def _game_menu_card(game):
+    features = "Frame data, character stats, combos and a quiz." if game == "sf6" else "Frame data, combos and a quiz."
+    return card_text(_game_label(game), features)
 
 
 def _row_move_label(row):
@@ -2345,107 +2029,77 @@ def _row_move_label(row):
     return move_name or num_cmd or "selected move"
 
 
-def _character_select_embed(
+def _page_footer(page, total_pages, search_query=None):
+    """"Page 2 of 3 · Search: ken", leaving out what doesn't apply."""
+    search = str(search_query or "").replace("`", "'").strip()
+    return [
+        f"Page {page + 1} of {total_pages}" if total_pages and total_pages > 1 else None,
+        f"Search: `{search}`" if search else None,
+    ]
+
+
+def _character_select_card(
     game,
-    page=None,
-    total_pages=None,
+    page,
+    total_pages,
     search_query=None,
     compare_row=None,
     stats_mode=False,
-    compare_char_key=None,
     compare_stat_label=None,
 ):
     label = _game_label(game)
-    page_text = f"\nPage {page + 1}/{total_pages}" if page is not None and total_pages else ""
-    search_text = f"\nSearch: `{search_query}`" if search_query else ""
-    compare_text = f"\nComparing against: `{_row_move_label(compare_row)}`" if compare_row else ""
-    if stats_mode and compare_char_key and compare_stat_label:
-        compare_text = f"\nComparing stats against: `{compare_stat_label}`"
-    if stats_mode:
-        title = f"{label} - {'Compare Stats' if compare_char_key else 'Character Stats'}"
-        description = (
-            "Select another character to compare stats."
-            if compare_char_key
-            else "Select a character to view their stats sheet."
-        )
+    if stats_mode and compare_stat_label:
+        title, line = f"{label} · Compare stats", f"Pick a character to compare with **{compare_stat_label}**."
+    elif stats_mode:
+        title, line = f"{label} · Character stats", "Pick a character to see their stat sheet."
     elif compare_row:
-        title = f"{label} - Compare"
-        description = "Select a character from the dropdown below."
+        title, line = f"{label} · Compare", f"Pick a character, then a move to compare with **{_row_move_label(compare_row)}**."
     else:
-        title = f"{label} - Frame Data"
-        description = "Select a character from the dropdown below."
-    return discord.Embed(
-        title=title,
-        description=f"{description}{page_text}{search_text}{compare_text}",
-        colour=_game_colour(game),
-    )
+        title, line = f"{label} · Frame data", "Pick a character."
+    return card_text(title, line, footer=_page_footer(page, total_pages, search_query))
 
 
-def _move_select_embed(char_display, page=None, total_pages=None, search_query=None, compare_row=None):
-    page_text = f"\nPage {page + 1}/{total_pages}" if page is not None and total_pages else ""
-    search_text = f"\nSearch: `{search_query}`" if search_query else ""
-    compare_text = f"\nComparing against: `{_row_move_label(compare_row)}`" if compare_row else ""
-    return discord.Embed(
-        title=f"{char_display} - {'Compare Move' if compare_row else 'Moves'}",
-        description=f"Select a move from the dropdown below.{page_text}{search_text}{compare_text}",
-        colour=0x3998C6,
-    )
+def _move_select_card(char_display, page, total_pages, search_query=None, compare_row=None):
+    line = f"Pick a move to compare with **{_row_move_label(compare_row)}**." if compare_row else "Pick a move: its card is posted below."
+    return card_text(char_display, line, footer=_page_footer(page, total_pages, search_query))
 
 
-def _quiz_difficulty_embed(game_label):
-    return discord.Embed(
-        title=f"{game_label} - Quiz",
-        description="Select a difficulty level.",
-        colour=0x00FF00,
-    )
-
-
-def _combo_character_select_embed(game, page=None, total_pages=None):
+def _combo_character_select_card(game, page, total_pages):
     from bubbot.frame_data import combo_data
 
-    page_text = f"\nPage {page + 1}/{total_pages}" if page is not None and total_pages else ""
-    return discord.Embed(
-        title=f"{combo_data.game_label(game)} - Combos",
-        description=f"Select a character to see available combo routes.{page_text}",
-        colour=combo_data.game_colour(game),
+    return card_text(
+        f"{combo_data.game_label(game)} · Combos",
+        "Pick a character to see their combo routes.",
+        footer=_page_footer(page, total_pages),
     )
 
 
-def _combo_section_select_embed(game, char_key, page=None, total_pages=None):
+def _combo_section_select_card(game, char_key, page, total_pages):
     from bubbot.frame_data import combo_data
 
-    page_text = f"\nPage {page + 1}/{total_pages}" if page is not None and total_pages and total_pages > 1 else ""
-    return discord.Embed(
-        title=f"{combo_data.game_label(game)} - {combo_data.display_char_name(game, char_key)}",
-        description=f"Pick a combo section (headings from the SuperCombo page).{page_text}",
-        colour=combo_data.game_colour(game),
+    return card_text(
+        f"{combo_data.display_char_name(game, char_key)} · {combo_data.game_label(game)} combos",
+        "Pick a section: its combos are posted below.",
+        footer=_page_footer(page, total_pages),
     )
 
 
-def _combo_subsection_select_embed(game, char_key, section_label, page=None, total_pages=None):
+def _combo_subsection_select_card(game, char_key, section_label, page, total_pages):
     from bubbot.frame_data import combo_data
 
-    page_text = f"\nPage {page + 1}/{total_pages}" if page is not None and total_pages and total_pages > 1 else ""
-    return discord.Embed(
-        title=f"{combo_data.game_label(game)} - {combo_data.display_char_name(game, char_key)}",
-        description=f"**{section_label}** — pick a sub-section.{page_text}",
-        colour=combo_data.game_colour(game),
+    return card_text(
+        f"{combo_data.display_char_name(game, char_key)} · {section_label}",
+        "Pick a sub-section.",
+        footer=_page_footer(page, total_pages),
     )
 
 
 async def send_main_menu(destination, owner_id=None):
-    await destination.send(
-        embed=_main_menu_embed(),
-        view=MainMenuView(owner_id),
-    )
+    await destination.send(view=MainMenuView(owner_id))
 
 
 async def send_game_menu(destination, game, owner_id=None):
-    game_key = str(game or "").strip().lower()
-    await destination.send(
-        embed=_game_menu_embed(_game_label(game_key), _game_colour(game_key)),
-        view=_game_menu_view(game_key, owner_id),
-    )
+    await destination.send(view=_game_menu_view(str(game or "").strip().lower(), owner_id))
 
 
 async def send_character_moves_menu(destination, game, char_key, owner_id=None):
@@ -2453,10 +2107,5 @@ async def send_character_moves_menu(destination, game, char_key, owner_id=None):
     if not moves:
         await destination.send("No moves found for that character.")
         return False
-    chars = dict(_character_list(game))
-    display = chars.get(char_key, str(char_key).title())
-    await destination.send(
-        embed=_move_select_embed(display, page=0, total_pages=max(1, math.ceil(len(moves) / MENU_SELECT_LIMIT))),
-        view=MoveSelectView(game, char_key, moves, owner_id, page=0, menu_locked=True),
-    )
+    await destination.send(view=MoveSelectView(game, char_key, moves, owner_id, page=0, menu_locked=True))
     return True

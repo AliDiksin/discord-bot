@@ -26,6 +26,7 @@ from bubbot.utils.notation_match_utils import (
 )
 from bubbot.utils.row_utils import unique_rows
 from bubbot.utils.text_utils import compact_key, correct_alias_typos, normalize_query_terms, query_suffix_candidates, strip_noise_words, strip_query_terms
+from bubbot.utils.sfstats_style import ACTION, BRAND, toggle_style
 
 
 THIRD_STRIKE_FRAME_DATA_FILE = "Third Strike Frame Data.ods"
@@ -737,7 +738,7 @@ def build_frame_embed(row, show_notes=False):
     embed = discord.Embed(
         title=truncate_value(f"Third Strike - {char_name}", 256),
         description=truncate_value(description, 4096),
-        colour=0xC0392B,
+        colour=BRAND,
     )
     add_embed_field(embed, "Startup", row.get("startup"), inline=True)
     add_embed_field(embed, "Active", row.get("active"), inline=True)
@@ -764,7 +765,7 @@ class ThirdStrikeAllHitboxImagesButton(discord.ui.Button):
         self.hitbox_links = get_hitbox_links(row, limit=None)
         super().__init__(
             label="Show All Images",
-            style=discord.ButtonStyle.success,
+            style=ACTION,
             disabled=len(self.hitbox_links) <= 1,
         )
 
@@ -779,7 +780,7 @@ class ThirdStrikeNotesButton(discord.ui.Button):
     def __init__(self, row):
         self.frame_row = row
         self.notes_text = get_notes_text(row)
-        super().__init__(label="Show Notes", style=discord.ButtonStyle.primary, disabled=not self.notes_text, row=0)
+        super().__init__(label="Show Notes", style=ACTION, disabled=not self.notes_text, row=0)
 
     async def callback(self, interaction: discord.Interaction):
         if not hasattr(self.view, "build_embed"):
@@ -787,7 +788,7 @@ class ThirdStrikeNotesButton(discord.ui.Button):
             return
         self.view.show_notes = not self.view.show_notes
         self.label = "Hide Notes" if self.view.show_notes else "Show Notes"
-        self.style = discord.ButtonStyle.danger if self.view.show_notes else discord.ButtonStyle.primary
+        self.style = toggle_style(self.view.show_notes)
         await interaction.response.edit_message(embed=self.view.build_embed(), view=self.view, attachments=self.view.initial_files())
 
 

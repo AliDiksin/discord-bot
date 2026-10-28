@@ -33,3 +33,4 @@ jobs:
           python -m unittest discover -s tests -t tests -p 'test_glossary_questions.py' -v
           python -m unittest discover -s tests -t tests -p 'test_frame_rankings.py' -v
           python -m unittest discover -s tests -t tests -p 'test_hitbox_links.py' -v
+          python -m unittest discover -s tests -t tests -p 'test_sf6_hitbox_images.py' -v

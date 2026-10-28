@@ -11,6 +11,7 @@ import pandas as pd
 from bubbot.utils.character_lookup import find_alias_positions_in_text, resolve_alias_key
 from bubbot.utils.choice_utils import character_choices
 from bubbot.utils.discord_formatting import add_embed_field, clean_value, truncate_value
+from bubbot.utils.sfstats_style import ACTION, BRAND, label_icon
 from bubbot.utils.text_utils import compact_key, strip_noise_words
 
 SF6_COMBOS_FILE = "SF6 Combos.ods"
@@ -23,12 +24,10 @@ COMBO_DATA = {}
 GAME_CONFIG = {
     "sf6": {
         "label": "Street Fighter 6",
-        "colour": 0x3998C6,
         "game_terms": ("sf6", "street fighter 6"),
     },
     "mk1": {
         "label": "Mortal Kombat 1",
-        "colour": 0x7E1616,
         "game_terms": ("mk1", "mortal kombat 1", "mortal kombat one", "mortal kombat"),
         "kameo_aware": True,
     },
@@ -86,10 +85,6 @@ def _game_config(game):
 
 def game_label(game):
     return _game_config(game).get("label") or str(game).upper()
-
-
-def game_colour(game):
-    return int(_game_config(game).get("colour") or 0xAAAAAA)
 
 
 def _resolve_data_path(filename):
@@ -735,7 +730,7 @@ def build_combo_pages(game, char_key, rows, *, section=None, subsection=None, gr
             discord.Embed(
                 title=truncate_value(base_title, 256),
                 description=truncate_value(description or "No combos found for that filter.", 4096),
-                colour=game_colour(game),
+                colour=BRAND,
             )
         ]
 
@@ -743,7 +738,7 @@ def build_combo_pages(game, char_key, rows, *, section=None, subsection=None, gr
         return discord.Embed(
             title=truncate_value(base_title + (" (cont.)" if continued else ""), 256),
             description=truncate_value(description, 4096),
-            colour=game_colour(game),
+            colour=BRAND,
         )
 
     pages = []
@@ -859,7 +854,7 @@ class ComboListView(discord.ui.View):
 
 class ComboListPreviousButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Previous", style=discord.ButtonStyle.primary, row=0)
+        super().__init__(label="Previous", style=ACTION, emoji=label_icon("Previous"), row=0)
 
     async def callback(self, interaction: discord.Interaction):
         view = self.view
@@ -873,7 +868,7 @@ class ComboListPreviousButton(discord.ui.Button):
 
 class ComboListNextButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Next", style=discord.ButtonStyle.primary, row=0)
+        super().__init__(label="Next", style=ACTION, emoji=label_icon("Next"), row=0)
 
     async def callback(self, interaction: discord.Interaction):
         view = self.view
@@ -886,8 +881,10 @@ class ComboListNextButton(discord.ui.Button):
 
 
 class ComboListBackButton(discord.ui.Button):
+    """The list is a result (an embed), so the menu it came from opens as a new private card."""
+
     def __init__(self):
-        super().__init__(label="Back", style=discord.ButtonStyle.danger, row=1)
+        super().__init__(label="Back", style=ACTION, emoji=label_icon("Back"), row=1)
 
     async def callback(self, interaction: discord.Interaction):
         from bubbot.features import menu_system
@@ -895,52 +892,18 @@ class ComboListBackButton(discord.ui.Button):
         view = self.view
         if view.menu_locked and view.section is not None and view.subsection is not None:
             subsections = combo_subsections(view.game, view.char_key, view.section)
-            await interaction.response.edit_message(
-                embed=menu_system._combo_subsection_select_embed(view.game, view.char_key, view.section),
-                view=menu_system.ComboSubsectionView(
-                    view.game,
-                    view.char_key,
-                    view.section,
-                    subsections,
-                    view.owner_id,
-                    page=0,
-                    back_to=view.back_to,
-                ),
-                attachments=[],
+            menu = menu_system.ComboSubsectionView(
+                view.game, view.char_key, view.section, subsections, view.owner_id, page=0, back_to=view.back_to,
             )
-            return
-        if view.menu_locked and view.section is not None:
+        elif view.menu_locked and view.section is not None:
             sections = combo_sections(view.game, view.char_key)
-            await interaction.response.edit_message(
-                embed=menu_system._combo_section_select_embed(
-                    view.game,
-                    view.char_key,
-                    page=0,
-                    total_pages=menu_system.ComboSectionView.page_count(sections),
-                ),
-                view=menu_system.ComboSectionView(
-                    view.game,
-                    view.char_key,
-                    sections,
-                    view.owner_id,
-                    page=0,
-                    back_to=view.back_to,
-                ),
-                attachments=[],
-            )
-            return
-        if getattr(view, "back_to", None) == "game_menu":
-            await menu_system._edit_to_game_menu(interaction, view.game, view.owner_id)
-            return
-        if view.menu_locked:
+            menu = menu_system.ComboSectionView(view.game, view.char_key, sections, view.owner_id, page=0, back_to=view.back_to)
+        elif view.menu_locked and getattr(view, "back_to", None) != "game_menu":
             chars = combo_character_list(view.game)
-            await interaction.response.edit_message(
-                embed=menu_system._combo_character_select_embed(view.game, page=0, total_pages=max(1, (len(chars) + 24) // 25)),
-                view=menu_system.ComboCharacterSelectView(view.game, chars, view.owner_id, page=0),
-                attachments=[],
-            )
-            return
-        await menu_system._edit_to_game_menu(interaction, view.game, view.owner_id)
+            menu = menu_system.ComboCharacterSelectView(view.game, chars, view.owner_id, page=0)
+        else:
+            menu = menu_system._game_menu_view(view.game, view.owner_id)
+        await menu_system._open_menu(interaction, menu)
 
 
 async def send_combo_section_menu(
@@ -958,12 +921,6 @@ async def send_combo_section_menu(
     sections = combo_sections(game, char_key)
     if not sections:
         return []
-    embed = menu_system._combo_section_select_embed(
-        game,
-        char_key,
-        page=0,
-        total_pages=menu_system.ComboSectionView.page_count(sections),
-    )
     view = menu_system.ComboSectionView(
         game,
         char_key,
@@ -972,7 +929,7 @@ async def send_combo_section_menu(
         page=0,
         back_to=back_to,
     )
-    send_kwargs = {"embed": embed, "view": view}
+    send_kwargs = {"view": view}
     if hasattr(destination, "response") and hasattr(destination.response, "is_done"):
         if not destination.response.is_done():
             sent = await destination.response.send_message(**send_kwargs)

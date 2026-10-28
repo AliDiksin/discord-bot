@@ -1,0 +1,177 @@
+"""SF Stats' look for Bub's messages (src/lib/discord/ui.ts and emoji.ts in sfstatsapp/sf-stats).
+
+Menus are Components V2 cards (``CardView``): one container with SF Stats' near-black accent, a
+``##`` heading, short lines and a small ``-#`` footer, with the controls below it. Results (frame
+data, stats, combos, glossary answers) stay embeds so SF Stats' frame-data helper can still post
+them; they take the same accent. Buttons are grey, the active tab or toggle is blue, and icons are
+the application's own ``sf_*`` emojis (uploaded by scripts/sync-discord-emojis.mjs).
+
+A Components V2 message can never become an embed again, so a menu and a result never edit into
+each other: picking from a menu posts the result as a new message, and a result's buttons open
+menus as new private messages.
+"""
+
+import discord
+
+BRAND = discord.Colour(0x0B0B0B)
+ACTION = discord.ButtonStyle.secondary
+ACTIVE = discord.ButtonStyle.primary
+# Splits a card into blocks with a thin line between them, like ui.ts divider().
+DIVIDER = object()
+
+# Unicode stand-ins for icons the application hasn't uploaded, as in emoji.ts.
+FALLBACK = {
+    "win": "🟩", "loss": "🟥", "draw": "⬜", "play": "▶️", "capture": "🎥", "live": "🔴", "queued": "⏳",
+    "ready": "▶️", "failed": "⚠️", "idle": "⚪", "bell": "🔔", "bell_off": "🔕", "refresh": "🔄", "versus": "⚔️",
+    "player": "👤", "trophy": "🏆", "gold": "🥇", "silver": "🥈", "bronze": "🥉", "verified": "✅", "warning": "⚠️",
+    "up": "▲", "down": "▼", "back": "◀️", "next": "▶️", "link": "🔗", "guide": "📖", "megaphone": "📣",
+    "share": "📣", "globe": "🌍", "server": "🏠", "you": "★", "close": "✖️", "chart": "📈", "film": "🎬",
+}
+_icon_ids = {}
+
+
+async def load_icons(client):
+    """Read the application's sf_* emojis once after login; until then, and on failure, icons are Unicode."""
+    try:
+        emojis = await client.fetch_application_emojis()
+    except Exception as error:
+        print(f"[sfstats-style] Icons not loaded, using Unicode: {type(error).__name__}", flush=True)
+        return
+    _icon_ids.clear()
+    _icon_ids.update({emoji.name: emoji.id for emoji in emojis if emoji.name.startswith("sf_")})
+    print(f"[sfstats-style] Loaded {len(_icon_ids)} icons", flush=True)
+
+
+def icon(key):
+    """A button or option emoji: the uploaded sf_<key>, else its Unicode stand-in."""
+    emoji_id = _icon_ids.get(f"sf_{key}")
+    return discord.PartialEmoji(name=f"sf_{key}", id=emoji_id) if emoji_id else FALLBACK.get(key)
+
+
+# Icons by what a button says, so every menu labels the same actions the same way.
+_LABEL_ICONS = (
+    ("Back", "back"), ("Previous", "back"), ("Next", "next"), ("Readme", "guide"), ("Compare", "versus"),
+    ("Quiz", "trophy"), ("Stats", "chart"), ("Close", "close"), ("Report", "warning"),
+)
+
+
+def label_icon(label):
+    """The icon for a button label ("Back to Moves" → back), or None."""
+    text = str(label or "")
+    return next((icon(key) for prefix, key in _LABEL_ICONS if text.startswith(prefix)), None)
+
+
+def toggle_style(active):
+    """Show/hide toggles read like SF Stats tabs: blue while showing, grey otherwise."""
+    return ACTIVE if active else ACTION
+
+
+def card_text(title=None, *lines, footer=None):
+    """"## Title", the lines that exist, then "-# a · b" in small print."""
+    parts = [f"## {title}"] if title else []
+    parts.extend(str(line) for line in lines if line)
+    footer_parts = [str(part) for part in (footer if isinstance(footer, (list, tuple)) else [footer]) if part]
+    if footer_parts:
+        parts.append("-# " + " · ".join(footer_parts))
+    return "\n".join(parts)
+
+
+def embed_card_blocks(embed):
+    """An existing embed (glossary entries) as card blocks: heading and text, a line, then its fields."""
+    head = card_text(embed.title, embed.description)
+    fields = "\n\n".join(f"**{field.name}**\n{field.value}" for field in embed.fields if field.name or field.value)
+    footer = f"-# {embed.footer.text}" if embed.footer and embed.footer.text else ""
+    return [block for block in (head, DIVIDER if fields else None, fields, footer) if block]
+
+
+def _control_rows(controls):
+    """Controls grouped into action rows like discord.ui.View: explicit rows first, then the rest fill in."""
+    rows = {}
+
+    def fits(row, item):
+        if isinstance(item, discord.ui.Select):
+            return not row
+        return len(row) < 5 and not any(isinstance(other, discord.ui.Select) for other in row)
+
+    for item in controls:
+        if item.row is not None:
+            rows.setdefault(item.row, []).append(item)
+    for item in controls:
+        if item.row is None:
+            index = 0
+            while not fits(rows.get(index, []), item):
+                index += 1
+            rows.setdefault(index, []).append(item)
+    return [rows[index] for index in sorted(rows)]
+
+
+class CardView(discord.ui.LayoutView):
+    """A Components V2 card: the text in one container with SF Stats' accent, the controls below it.
+
+    Controls are added as on a discord.ui.View (``add_item`` with ``row=``, or ``@discord.ui.button``,
+    which LayoutView alone ignores), so menus keep their structure. ``set_card`` sets the text.
+    """
+
+    def __init__(self, *, timeout=None):
+        super().__init__(timeout=timeout)
+        self._blocks = []
+        self._controls = []
+        for name, func in self._decorated_controls():
+            item = func.__discord_ui_model_type__(**func.__discord_ui_model_kwargs__)
+            item.callback = self._bind(func, item)
+            setattr(self, name, item)
+            self._controls.append(item)
+        self._layout()
+
+    @classmethod
+    def _decorated_controls(cls):
+        found = {}
+        for base in reversed(cls.__mro__):
+            for name, member in base.__dict__.items():
+                if hasattr(member, "__discord_ui_model_type__"):
+                    found[name] = member
+        return found.items()
+
+    def _bind(self, func, item):
+        async def callback(interaction):
+            return await func(self, interaction, item)
+
+        return callback
+
+    def set_card(self, *blocks):
+        """The card's text: markdown strings, with DIVIDER for a thin line between them."""
+        self._blocks = [block for block in blocks if block]
+        self._layout()
+        return self
+
+    def add_item(self, item):
+        if isinstance(item, (discord.ui.Button, discord.ui.Select)):
+            self._controls.append(item)
+            self._layout()
+            return self
+        return super().add_item(item)
+
+    def remove_item(self, item):
+        if item in self._controls:
+            self._controls.remove(item)
+            self._layout()
+            return self
+        return super().remove_item(item)
+
+    def _layout(self):
+        super().clear_items()
+        # Discord allows 4,000 characters of text across the whole card.
+        parts, budget = [], 4000
+        for block in self._blocks:
+            if block is DIVIDER:
+                parts.append(discord.ui.Separator())
+            elif budget > 0:
+                text = str(block)[:budget]
+                budget -= len(text)
+                parts.append(discord.ui.TextDisplay(text))
+        super().add_item(discord.ui.Container(*(parts or [discord.ui.TextDisplay("​")]), accent_colour=BRAND))
+        for item in self._controls:
+            if isinstance(item, discord.ui.Button) and item.emoji is None and not item.url:
+                item.emoji = label_icon(item.label)
+        for row in _control_rows(self._controls):
+            super().add_item(discord.ui.ActionRow(*row))

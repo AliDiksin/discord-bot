@@ -22,7 +22,7 @@ GUILD = 1345474576439836802
 URL = "https://dev.sfstats.app/internal/discord/messages"
 CONFIG = MessageConfig(enabled=True, url=URL, mention_ids=frozenset({SFSTATS_USER}))
 ROUTING = MessageConfig(enabled=True, url=URL, mention_ids=frozenset({SFSTATS_USER}), route_bub_mentions=True)
-REPORTS = f"{sfstats_messages.DISCORD_API}/channels/1563301451969724567/messages"
+REPORTS = f"{sfstats_messages.DISCORD_API}/channels/{sfstats_messages.DEFAULT_REPORT_CHANNEL}/messages"
 
 
 @dataclass(frozen=True)
@@ -190,7 +190,7 @@ class ClaimTests(unittest.TestCase):
             sfstats_messages._last_report.clear()
             self.assertFalse(send(500.0))
         with patch.dict(os.environ, {"SFSTATS_DISCORD_REPORT_CHANNEL_ID": "", "BUB_OWNER_NOTIFY_CHANNEL_ID": ""}):
-            self.assertEqual(sfstats_messages.report_channel(), "1563301451969724567")
+            self.assertEqual(sfstats_messages.report_channel(), sfstats_messages.DEFAULT_REPORT_CHANNEL)
         self.assertFalse(asyncio.run(sfstats_messages.report_unavailable(session, "other", "x", token="")), "no token, no report")
 
 

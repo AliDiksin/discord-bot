@@ -15,6 +15,7 @@ from bubbot.utils.response_log import (
     build_log_record,
     log_and_notify_owner,
 )
+from bubbot.utils.sfstats_style import ACTION, label_icon
 
 
 # Discord modal and Report Issue button
@@ -22,7 +23,7 @@ class FailedPromptReportModal(discord.ui.Modal, title="Report an issue"):
     report_details = discord.ui.TextInput(
         label="What went wrong?",
         style=discord.TextStyle.paragraph,
-        placeholder="Example: I asked for mai ex fan and Bub said the scrolls are missing.",
+        placeholder="Example: I asked for mai ex fan and SF Stats couldn't find the move.",
         required=True,
         max_length=1500,
     )
@@ -84,7 +85,8 @@ class FailedPromptReportButton(discord.ui.Button):
     def __init__(self, report_context: dict):
         super().__init__(
             label="Report Issue",
-            style=discord.ButtonStyle.danger,
+            style=ACTION,
+            emoji=label_icon("Report"),
             custom_id="bub_failed_prompt_report",
         )
         self.report_context = dict(report_context or {})

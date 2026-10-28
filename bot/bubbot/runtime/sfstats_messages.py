@@ -30,7 +30,7 @@ MENTION = re.compile(r"<@[!&]?\d{17,20}>")
 MAX_CONTENT = 600
 DISCORD_API = "https://discord.com/api/v10"
 # The maintainers' report channel, shared with Bub's failed-prompt reports.
-DEFAULT_REPORT_CHANNEL = "1563301451969724567"
+DEFAULT_REPORT_CHANNEL = "1563332693423431900"
 REPORT_INTERVAL_SECONDS = 60.0
 # 0 is a plain message and 19 a reply; joins, pins and other system messages are never requests.
 USER_MESSAGE_TYPES = (0, 19)

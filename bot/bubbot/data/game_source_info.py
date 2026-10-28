@@ -32,11 +32,6 @@ SOURCE_CATALOG: dict[str, GameSourceInfo] = {
         url="https://fullmeter.com/fat/",
         icon_url="",
     ),
-    "ultimate_frame_data": GameSourceInfo(
-        name="Ultimate Frame Data",
-        url="https://ultimateframedata.com/sf6/",
-        icon_url="",
-    ),
     "supercombo": GameSourceInfo(
         name="SuperCombo Wiki",
         url="https://wiki.supercombo.gg",
@@ -78,8 +73,9 @@ FRAME_DATA_SOURCE_KEYS: dict[str, str] = {
     "avtl": "supercombo",
 }
 
+# SF6 frame embeds show SuperCombo's hitbox images beside FAT's data.
 ADDITIONAL_FRAME_DATA_SOURCE_KEYS: dict[str, tuple[str, ...]] = {
-    "sf6": ("ultimate_frame_data",),
+    "sf6": ("supercombo",),
 }
 
 COMBO_SOURCE_KEYS: dict[str, str] = {

@@ -19,6 +19,7 @@ from bubbot.utils.discord_formatting import add_embed_field as shared_add_embed_
 from bubbot.utils.discord_formatting import clean_value as shared_clean_value
 from bubbot.utils.discord_formatting import truncate_value as shared_truncate_value
 from bubbot.utils.text_utils import compact_key, contains_token_sequence, correct_alias_typos, word_tokens
+from bubbot.utils.sfstats_style import BRAND
 
 
 STAT_FIELD_LABELS = {
@@ -262,19 +263,12 @@ def build_stats_text_block(char_key, stats, stat_keys=None):
     return "\n".join(lines)
 
 
-def _embed_colour(stats):
-    color = shared_clean_value((stats or {}).get("color", ""), default="")
-    if re.fullmatch(r"#[0-9a-fA-F]{6}", color):
-        return int(color[1:], 16)
-    return 0x3998C6
-
-
 def build_character_stats_embed(char_key, stats, stat_keys=None):
     title_name = display_character_name(char_key, stats)
     fields = iter_stats_fields(stats, stat_keys)
     embed = discord.Embed(
         title=shared_truncate_value(f"{title_name} — Character Stats", 256),
-        colour=_embed_colour(stats),
+        colour=BRAND,
     )
     for label, value in fields:
         shared_add_embed_field(embed, label, value, inline=True)
@@ -290,7 +284,7 @@ def build_character_stats_comparison_embed(char_key_a, stats_a, char_key_b, stat
     fields_b = dict(iter_stats_fields(stats_b, stat_keys))
     embed = discord.Embed(
         title=shared_truncate_value(f"{name_a} vs {name_b} — Stats", 256),
-        colour=_embed_colour(stats_a),
+        colour=BRAND,
     )
     if not fields_a and not fields_b:
         embed.description = "No matching stats were found for that comparison."
