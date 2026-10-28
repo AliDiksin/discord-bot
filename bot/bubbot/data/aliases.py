@@ -1818,7 +1818,7 @@ SF6_STAT_TOKEN_SEQUENCE_ALIASES = (
 )
 
 SF6_STAT_PHRASE_ALIASES = (
-    (("health", "hp", "life bar", "life"), ("health",)),
+    (("health", "life bar", "life"), ("health",)),
     (("best reversal", "reversal", "reversals", "defensive reversal"), ("bestReversal",)),
     (
         ("forward dash", "f dash", "fdash", "front dash", "forward 66", "f66"),

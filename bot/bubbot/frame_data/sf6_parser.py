@@ -1791,7 +1791,7 @@ def find_moves_in_text(deps, text):
         property_only_query=property_only_query,
         startup_alias_query=startup_alias_query,
         charge_button_query=charge_button_query,
-        # A target combo's options are moves too: "hp" in "5HP > HP" is a button, not health.
+        # A target combo's options are moves too, so "5HP > HP" never falls back to the stats panel.
         move_results_found=bool(results or tc_prompt_blocks),
     )
     wants_stats = stats_intent.wants_stats
