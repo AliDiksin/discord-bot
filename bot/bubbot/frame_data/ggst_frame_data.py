@@ -37,7 +37,7 @@ from bubbot.utils.notation_match_utils import (
 from bubbot.utils.mediawiki_images import resize_mediawiki_thumb_url as shared_resize_mediawiki_thumb_url
 from bubbot.utils.row_utils import row_key
 from bubbot.utils.text_utils import compact_key, correct_alias_typos, normalize_query_terms, query_suffix_candidates, strip_noise_words, strip_query_terms, word_tokens
-from bubbot.utils.sfstats_style import ACTION, BRAND, toggle_style
+from bubbot.utils.sfstats_style import ACTION, BRAND, AllHitboxImagesButton, toggle_style
 
 
 GGST_FRAME_DATA_FILE = "GGST Frame Data.ods"
@@ -1025,20 +1025,9 @@ def get_media_links(row, limit=4):
     return links[:limit] if limit is not None else links
 
 
-class GGSTAllHitboxImagesButton(discord.ui.Button):
+class GGSTAllHitboxImagesButton(AllHitboxImagesButton):
     def __init__(self, row):
-        self.hitbox_links = get_media_links(row, limit=None)
-        super().__init__(
-            label="Show All Images",
-            style=ACTION,
-            disabled=len(self.hitbox_links) <= 1,
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        if len(self.hitbox_links) <= 1:
-            await interaction.response.defer()
-            return
-        await interaction.response.send_message("\n".join(self.hitbox_links))
+        super().__init__(get_media_links(row, limit=None))
 
 
 class GGSTNotesButton(discord.ui.Button):

@@ -34,7 +34,7 @@ get_existing_local_gif_asset_paths = None
 is_deleted_message_reference_error = None
 RANGE_SCROLLS_MISSING_TEXT = "the range of that move is not on the supercombo scrolls"
 RANGE_SCROLLS_MISSING_TABLE_TEXT = "missing"
-# SuperCombo hitbox images by (character, numCmd), built by scripts/build_move_image_caches.py.
+# SuperCombo hitbox images by (character, numCmd), in SuperCombo's order, built by scripts/build_move_image_caches.py.
 SF6_HITBOX_IMAGE_URLS = {}
 SF6_MOVE_IMAGES_MODULE = "bubbot.data.sf6_move_images"
 
@@ -57,8 +57,9 @@ def load_move_image_urls(module_name=SF6_MOVE_IMAGES_MODULE):
         data,
         char_key_fn=normalize_image_key,
         move_key_fn=normalize_image_key,
+        url_fn=_url_list,
     )
-    print(f"[sf6-images] loaded {loaded} hitbox image links", flush=True)
+    print(f"[sf6-images] loaded hitbox images for {loaded} moves", flush=True)
     return True
 
 
@@ -92,11 +93,22 @@ def normalize_image_key(value):
     return compact_key(value)
 
 
-def get_sf6_move_image_url(row):
-    """The move's SuperCombo hitbox image, or "" when SuperCombo has none for it: never another image."""
+def _url_list(links):
+    """A cached move's images as a list (older caches held one URL per move)."""
+    return [str(link).strip() for link in ([links] if isinstance(links, str) else links or []) if str(link).strip()]
+
+
+def get_sf6_hitbox_image_urls(row):
+    """Every SuperCombo hitbox image for the move, in SuperCombo's order; empty when it has none."""
     char_key = normalize_image_key(row.get("char_name", ""))
     num_cmd_key = normalize_image_key(row.get("numCmd", ""))
-    return SF6_HITBOX_IMAGE_URLS.get((char_key, num_cmd_key), "")
+    return list(SF6_HITBOX_IMAGE_URLS.get((char_key, num_cmd_key), ()))
+
+
+def get_sf6_move_image_url(row):
+    """The move's first SuperCombo hitbox image, or "" when SuperCombo has none for it: never another image."""
+    urls = get_sf6_hitbox_image_urls(row)
+    return urls[0] if urls else ""
 
 
 load_move_image_urls()

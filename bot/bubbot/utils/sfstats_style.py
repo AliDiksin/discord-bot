@@ -66,6 +66,20 @@ def toggle_style(active):
     return ACTIVE if active else ACTION
 
 
+class AllHitboxImagesButton(discord.ui.Button):
+    """Show All Images on a frame card: posts every image link when the move has more than one."""
+
+    def __init__(self, hitbox_links):
+        self.hitbox_links = list(hitbox_links or [])
+        super().__init__(label="Show All Images", style=ACTION, disabled=len(self.hitbox_links) <= 1)
+
+    async def callback(self, interaction: discord.Interaction):
+        if len(self.hitbox_links) <= 1:
+            await interaction.response.defer()
+            return
+        await interaction.response.send_message("\n".join(self.hitbox_links))
+
+
 def card_text(title=None, *lines, footer=None):
     """"## Title", the lines that exist, then "-# a · b" in small print."""
     parts = [f"## {title}"] if title else []

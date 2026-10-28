@@ -1471,12 +1471,16 @@ class FrameResultView(OwnedView):
         self.show_notes = False
         self.show_stats = False
         if game == "sf6":
-            from bubbot.frame_data.frame_output import SF6NotesButton, SF6ShowStatsButton
+            from bubbot.frame_data.frame_output import SF6NotesButton, SF6ShowStatsButton, get_sf6_hitbox_image_urls
+            from bubbot.utils.sfstats_style import AllHitboxImagesButton
             self.character_stats = FRAME_STATS.get(char_key) or {}
             self.stats_button = SF6ShowStatsButton(disabled=not self.character_stats)
             self.notes_button = SF6NotesButton(row)
             self.add_item(self.stats_button)
             self.add_item(self.notes_button)
+            self.all_hitbox_images_button = AllHitboxImagesButton(get_sf6_hitbox_image_urls(row))
+            if len(self.all_hitbox_images_button.hitbox_links) > 1:
+                self.add_item(self.all_hitbox_images_button)
         elif game == "ggst":
             from bubbot.frame_data.ggst_frame_data import GGSTAllHitboxImagesButton, GGSTNotesButton
             self.all_hitbox_images_button = GGSTAllHitboxImagesButton(row)
