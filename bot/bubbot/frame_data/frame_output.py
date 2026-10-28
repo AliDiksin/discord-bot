@@ -21,6 +21,7 @@ from bubbot.frame_data.sf6_character_stats import (
 from bubbot.runtime.config import FRAME_DATA_ERROR_CONTACT_TEXT, MISSING_HITBOX_GIF_TEXT
 from bubbot.utils.text_utils import compact_key
 from bubbot.frame_data.gif_lookup import DISCORD_ATTACHMENT_LIMIT
+from bubbot.utils.sfstats_style import ACTION, ACTIVE, BRAND, toggle_style
 
 FRAME_STATS = {}
 normalize_char_name = None
@@ -251,7 +252,7 @@ def build_frame_embed(row, image_url_override=None, show_notes=False):
     embed = discord.Embed(
         title=truncate_embed_value(char_name, 256),
         description=truncate_embed_value(f"{move_name} ({num_cmd}){drink_level_suffix}", 4096),
-        colour=0x3998C6,
+        colour=BRAND,
     )
 
     startup = clean_embed_value(row.get("startup", ""))
@@ -363,7 +364,7 @@ def sanitize_embed_followup_text(text):
 
 class MissingHitboxGifShowFramedataButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Show Framedata", style=discord.ButtonStyle.primary)
+        super().__init__(label="Show Framedata", style=ACTIVE)
 
     async def callback(self, interaction: discord.Interaction):
         parent = self.view
@@ -420,7 +421,7 @@ class FrameDataGifButton(discord.ui.Button):
     def __init__(self, row, gif_links, showing_gif=False):
         super().__init__(
             label="Hide Image" if showing_gif else "Show GIF",
-            style=discord.ButtonStyle.danger if showing_gif else discord.ButtonStyle.primary,
+            style=toggle_style(showing_gif),
             disabled=not gif_links,
         )
         self.frame_row = row
@@ -452,7 +453,7 @@ class FrameDataGifButton(discord.ui.Button):
 
             if self.showing_gif:
                 self.label = "Show GIF"
-                self.style = discord.ButtonStyle.primary
+                self.style = ACTION
                 self.showing_gif = False
                 if hasattr(self.view, "build_embed"):
                     embed = self.view.build_embed()
@@ -467,7 +468,7 @@ class FrameDataGifButton(discord.ui.Button):
             embed.set_thumbnail(url=None)
             embed.set_image(url=f"attachment://{filename}")
             self.label = "Hide Image"
-            self.style = discord.ButtonStyle.danger
+            self.style = ACTIVE
             self.showing_gif = True
             if hasattr(self.view, "build_embed"):
                 embed = self.view.build_embed()
@@ -498,7 +499,7 @@ async def _edit_frame_data_view(interaction, view, attachments):
 
 def _set_toggle_button_style(button, active):
     button.label = f"Hide {button.panel_label}" if active else f"Show {button.panel_label}"
-    button.style = discord.ButtonStyle.danger if active else discord.ButtonStyle.primary
+    button.style = toggle_style(active)
 
 
 class SF6PanelToggleButton(discord.ui.Button):
@@ -535,7 +536,7 @@ class SF6ShowStatsButton(SF6PanelToggleButton):
     def __init__(self, disabled=False):
         super().__init__(
             label="Show Stats",
-            style=discord.ButtonStyle.primary,
+            style=ACTION,
             disabled=disabled,
             row=0,
         )
@@ -572,7 +573,7 @@ class SF6NotesButton(SF6PanelToggleButton):
         self.toggle_attr = "show_notes"
         super().__init__(
             label="Show Notes",
-            style=discord.ButtonStyle.primary,
+            style=ACTION,
             disabled=not sf6_row_has_notes_content(row),
             row=0,
         )

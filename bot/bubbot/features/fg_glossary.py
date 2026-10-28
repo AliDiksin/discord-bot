@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import discord
+from bubbot.utils.sfstats_style import BRAND
 
 
 GLOSSARY_HOME_URL = "https://glossary.infil.net/"
@@ -116,7 +117,7 @@ def build_glossary_embed(term=None):
     if normalized:
         title = f"FG Glossary: {normalized}"
         description = f"Search Infil's glossary for **{discord.utils.escape_markdown(normalized)}**."
-    embed = discord.Embed(title=title, description=description, url=url, colour=0x6F4DBF)
+    embed = discord.Embed(title=title, description=description, url=url, colour=BRAND)
     embed.add_field(name="Link", value=url, inline=False)
     embed.set_footer(text="Source: glossary.infil.net")
     return embed
@@ -135,7 +136,7 @@ def build_glossary_definition_embed(term=None):
     title = str(item.get("term", "") or normalized).strip()
     definition = _truncate(_clean_definition_text(item.get("def", "")), 3500)
     url = glossary_url(title)
-    embed = discord.Embed(title=f"FG Glossary: {title}", description=definition or "No definition text found.", url=url, colour=0x6F4DBF)
+    embed = discord.Embed(title=f"FG Glossary: {title}", description=definition or "No definition text found.", url=url, colour=BRAND)
     alt_terms = [str(value).strip() for value in item.get("altterm", []) or [] if str(value).strip()]
     if alt_terms:
         embed.add_field(name="Also Known As", value=_truncate(", ".join(alt_terms), 900), inline=False)

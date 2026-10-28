@@ -9,6 +9,7 @@ import random
 import re
 
 import discord
+from bubbot.utils.sfstats_style import ACTION, toggle_style
 
 
 # Persona hooks (default stubs; buenavista may override)
@@ -509,7 +510,7 @@ class QuizNotesButton(discord.ui.Button):
         self.game = _quiz_game_key(game)
         super().__init__(
             label="Show Notes",
-            style=discord.ButtonStyle.primary,
+            style=ACTION,
             disabled=not _quiz_row_has_notes(row, self.game),
             row=0,
         )
@@ -520,13 +521,13 @@ class QuizNotesButton(discord.ui.Button):
             return
         self.view.show_notes = not self.view.show_notes
         self.label = "Hide Notes" if self.view.show_notes else "Show Notes"
-        self.style = discord.ButtonStyle.secondary if self.view.show_notes else discord.ButtonStyle.primary
+        self.style = toggle_style(self.view.show_notes)
         await interaction.response.edit_message(embed=self.view.build_embed(), view=self.view, attachments=[])
 
 
 class QuizGiveUpButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Give Up", style=discord.ButtonStyle.danger, row=0)
+        super().__init__(label="Give Up", style=ACTION, row=0)
 
     async def callback(self, interaction: discord.Interaction):
         channel = interaction.channel

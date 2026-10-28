@@ -16,6 +16,7 @@ from bubbot.frame_data.sf6_character_stats import (
     sf6_stat_slash_autocomplete_values,
 )
 from bubbot.utils.slash_frame_flow import send_slash_frame_result, send_slash_stats_result
+from bubbot.utils.sfstats_style import CardView
 
 
 def _activity_entry_enabled():
@@ -600,11 +601,11 @@ def register_slash_commands(tree, deps):
 
     @tree.command(name="sfstatsmenu", description="Open the SF Stats frame data menu")
     async def sfstats_menu_slash_command(interaction: discord.Interaction):
-        await interaction.response.send_message(embed=menu_system._main_menu_embed(), view=menu_system.MainMenuView(interaction.user.id))
+        await interaction.response.send_message(view=menu_system.MainMenuView(interaction.user.id))
 
     @tree.command(name="readme", description="Show a quick guide to SF Stats")
     async def readme_slash_command(interaction: discord.Interaction):
-        await interaction.response.send_message(embed=menu_system.build_readme_embed())
+        await interaction.response.send_message(view=CardView().set_card(*menu_system.readme_blocks()))
 
     @tree.command(name="glossary", description="Open Infil's Fighting Game Glossary")
     @discord.app_commands.describe(term="Optional glossary term, like safe jump or option select")

@@ -16,6 +16,7 @@ from bubbot.utils.frame_match_utils import filter_rows_by_strength, find_matchin
 from bubbot.utils.notation_match_utils import extract_jump_motion_command, looks_like_notation_query, query_has_jump_motion_notation
 from bubbot.utils.row_utils import unique_rows
 from bubbot.utils.text_utils import compact_key, correct_alias_typos, normalize_query_terms, query_suffix_candidates, strip_noise_words, strip_query_terms
+from bubbot.utils.sfstats_style import ACTION, BRAND, toggle_style
 
 
 SFV_FRAME_DATA_FILE = "SF5 Frame Data - FAT .ods"
@@ -513,7 +514,7 @@ def build_frame_embed(row, show_notes=False):
     title = f"{row.get('char_name', 'SFV')} - {row.get('moveName') or row.get('numCmd')}"
     if row.get("state_label"):
         title = f"{title} [{row.get('state_label')}]"
-    embed = discord.Embed(title=title, colour=0xD0342C)
+    embed = discord.Embed(title=title, colour=BRAND)
     embed.add_field(name="Input", value=truncate_value(clean_value(row.get("numCmd"), "?"), 1024), inline=True)
     embed.add_field(name="Startup", value=truncate_value(clean_value(row.get("startup"), "-"), 1024), inline=True)
     embed.add_field(name="Active", value=truncate_value(clean_value(row.get("active"), "-"), 1024), inline=True)
@@ -538,14 +539,14 @@ def build_frame_embed(row, show_notes=False):
 
 class SFVNotesButton(discord.ui.Button):
     def __init__(self, row):
-        super().__init__(label="Show Notes", style=discord.ButtonStyle.primary)
+        super().__init__(label="Show Notes", style=ACTION)
         self.frame_row = row
 
     async def callback(self, interaction):
         view = self.view
         view.show_notes = not view.show_notes
         self.label = "Hide Notes" if view.show_notes else "Show Notes"
-        self.style = discord.ButtonStyle.danger if view.show_notes else discord.ButtonStyle.primary
+        self.style = toggle_style(view.show_notes)
         await interaction.response.edit_message(embed=view.build_embed(), view=view, attachments=view.initial_files())
 
 

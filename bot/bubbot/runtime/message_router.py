@@ -91,6 +91,7 @@ except ImportError:  # Bub's own deployment only; frame data runs without it (fr
     from bubbot.runtime.frame_only import buenavista_extension
 from collections import deque
 from bubbot.features.failure_card import FailureCard
+from bubbot.utils.sfstats_style import ACTION, CardView, card_text, label_icon
 from bubbot.runtime import decisions, frame_rankings, frame_resolver, render_server, sfstats_bridge
 from bubbot.runtime.slash_commands import register_slash_commands
 from bubbot.runtime.startup import handle_ready
@@ -843,7 +844,7 @@ class PropertyValueView(discord.ui.View):
 
 class PropertyCompareButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Compare", style=discord.ButtonStyle.success)
+        super().__init__(label="Compare", style=ACTION, emoji=label_icon("Compare"))
 
     async def callback(self, interaction: discord.Interaction):
         parent = self.view
@@ -851,18 +852,14 @@ class PropertyCompareButton(discord.ui.Button):
         if not moves:
             await interaction.response.send_message("No moves found for this character.", ephemeral=True)
             return
-        display = menu_system._character_display_name(parent.game, parent.char_key)
-        await interaction.response.edit_message(
-            content=f"Choose another move to compare {parent.property_key.replace('_', ' ')} with.",
-            embed=menu_system._move_select_embed(display, page=0, total_pages=max(1, (len(moves) + 24) // 25), compare_row=parent.row),
-            view=PropertyCompareSelectView(parent, moves, page=0),
-            attachments=[],
-        )
+        # The reply is plain text, so the picker opens privately and edits the reply when a move is chosen.
+        picker = PropertyCompareSelectView(parent, moves, page=0, reply=interaction.message)
+        await interaction.response.send_message(view=picker, ephemeral=True)
 
 
 class PropertyFullFrameDataButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Show Full Framedata", style=discord.ButtonStyle.primary)
+        super().__init__(label="Show Full Framedata", style=ACTION)
 
     async def callback(self, interaction: discord.Interaction):
         parent = self.view
@@ -880,15 +877,26 @@ class PropertyFullFrameDataButton(discord.ui.Button):
                 _record_frame_data_ids([sent.id])
 
 
-class PropertyCompareSelectView(discord.ui.View):
-    def __init__(self, parent_view, moves, page=0):
+class PropertyCompareSelectView(CardView):
+    def __init__(self, parent_view, moves, page=0, reply=None):
         super().__init__(timeout=300)
         self.parent_view = parent_view
         self.moves = moves
         self.page = page
+        self.reply = reply
         select = PropertyCompareSelect()
         self.add_item(select)
         select._refresh_options()
+        page_count = self._page_count()
+        self.previous_button.disabled = self.next_button.disabled = page_count == 1
+        self.set_card(card_text(
+            menu_system._character_display_name(parent_view.game, parent_view.char_key),
+            f"Pick a move to compare {parent_view.property_key.replace('_', ' ')} with.",
+            footer=f"Page {page + 1} of {page_count}" if page_count > 1 else None,
+        ))
+
+    def _page_count(self):
+        return max(1, (len(self.moves) + 24) // 25)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.parent_view.owner_id:
@@ -896,33 +904,21 @@ class PropertyCompareSelectView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Previous", style=ACTION, row=4)
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        page_count = max(1, (len(self.moves) + 24) // 25)
-        new_page = self.page - 1 if self.page > 0 else page_count - 1
-        await self._edit_page(interaction, new_page)
+        await self._edit_page(interaction, self.page - 1 if self.page > 0 else self._page_count() - 1)
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, row=4)
+    @discord.ui.button(label="Next", style=ACTION, row=4)
     async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        page_count = max(1, (len(self.moves) + 24) // 25)
-        new_page = self.page + 1 if self.page < page_count - 1 else 0
-        await self._edit_page(interaction, new_page)
+        await self._edit_page(interaction, self.page + 1 if self.page < self._page_count() - 1 else 0)
 
-    @discord.ui.button(label="Back", style=discord.ButtonStyle.danger, row=4)
+    @discord.ui.button(label="Close", style=ACTION, row=4)
     async def back_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        parent = self.parent_view
-        await interaction.response.edit_message(content=parent.content, embed=None, view=parent, attachments=[])
+        await interaction.response.edit_message(view=CardView().set_card("Compare closed."))
 
     async def _edit_page(self, interaction, new_page):
-        parent = self.parent_view
-        display = menu_system._character_display_name(parent.game, parent.char_key)
-        page_count = max(1, (len(self.moves) + 24) // 25)
-        await interaction.response.edit_message(
-            content=f"Choose another move to compare {parent.property_key.replace('_', ' ')} with.",
-            embed=menu_system._move_select_embed(display, page=new_page, total_pages=page_count, compare_row=parent.row),
-            view=PropertyCompareSelectView(parent, self.moves, page=new_page),
-            attachments=[],
-        )
+        picker = PropertyCompareSelectView(self.parent_view, self.moves, page=new_page, reply=self.reply)
+        await interaction.response.edit_message(view=picker)
 
 
 class PropertyCompareSelect(discord.ui.Select):
@@ -945,19 +941,19 @@ class PropertyCompareSelect(discord.ui.Select):
             return
         idx = int(self.values[0])
         parent = self.view.parent_view
-        row, _label = self.view.moves[idx]
+        row, label = self.view.moves[idx]
         next_rows = iter_unique_frame_rows(parent.rows + [row])
         property_reply = _format_requested_property_reply(next_rows, parent.property_key, game=parent.game)
         if not property_reply:
             await interaction.response.send_message("I could not format that value for the selected move.", ephemeral=True)
             return
         next_char_key = menu_system._row_character_key(parent.game, row, parent.char_key) or parent.char_key
-        await interaction.response.edit_message(
-            content=property_reply,
-            embed=None,
-            view=PropertyValueView(parent.game, next_char_key, next_rows, parent.property_key, parent.owner_id, property_reply),
-            attachments=[],
-        )
+        await interaction.response.edit_message(view=CardView().set_card(f"Added **{label}** to the comparison."))
+        if self.view.reply is not None:
+            await self.view.reply.edit(
+                content=property_reply,
+                view=PropertyValueView(parent.game, next_char_key, next_rows, parent.property_key, parent.owner_id, property_reply),
+            )
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         self._refresh_options()

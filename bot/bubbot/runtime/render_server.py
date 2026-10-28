@@ -69,10 +69,23 @@ def _link_rows(view):
     return rows
 
 
+def _menu_card_embeds(view):
+    """A menu is a Components V2 card, which SF Stats posts only as embeds: its text as one, controls left out."""
+    from bubbot.utils.sfstats_style import BRAND, DIVIDER, CardView
+
+    if not isinstance(view, CardView):
+        return []
+    text = "\n\n".join(str(block) for block in view._blocks if block is not DIVIDER).strip()
+    title, _, body = text.partition("\n") if text.startswith("## ") else ("", "", text)
+    if not (title or body):
+        return []
+    return [{"title": title[3:][:256], "description": body.strip()[:4096], "color": BRAND.value}]
+
+
 def capture(sink, content=None, *, embed=None, embeds=None, file=None, files=None, view=None, **_ignored):
     message = {
         "content": "" if content is None else str(content),
-        "embeds": [_embed_dict(e) for e in ([embed] if embed is not None else []) + list(embeds or [])],
+        "embeds": [_embed_dict(e) for e in ([embed] if embed is not None else []) + list(embeds or [])] or _menu_card_embeds(view),
         "components": _link_rows(view),
         "files": [f for f in (_file_dict(x) for x in ([file] if file is not None else []) + list(files or [])) if f],
     }
