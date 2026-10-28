@@ -1078,20 +1078,29 @@ def find_moves_in_text(deps, text):
                         pair for pair in tc_pair_candidates if pair.startswith(f"{base_key}>")
                     ]
                     if explicit_pair_matches:
-                        matched_any = False
+                        # FAT writes follow-ups with the neutral 5 ("5HP > 5HP"); people type "5HP > HP".
+                        def follow_key(follow):
+                            return re.sub(r"(^|>)5(?=[lmh]?[pk])", r"\1", follow)
+
+                        explicit_follows = {follow_key(pair.split(">", 1)[1]) for pair in explicit_pair_matches}
+                        combo_follows = {}
                         for combo_raw in combos:
                             combo_key = re.sub(r"\s+", "", combo_raw.lower())
-                            if ">" not in combo_key:
-                                continue
-                            combo_follow = combo_key.split(">", 1)[1]
-                            for explicit_pair in explicit_pair_matches:
-                                explicit_follow = explicit_pair.split(">", 1)[1]
-                                if combo_follow == explicit_follow or combo_follow.startswith(explicit_follow):
-                                    tc_selected_combos.add(combo_key)
-                                    if combo_key not in extra_inputs:
-                                        extra_inputs.append(combo_key)
-                                    matched_any = True
-                        if matched_any:
+                            if ">" in combo_key:
+                                combo_follows[combo_key] = follow_key(combo_key.split(">", 1)[1])
+                        # The whole typed chain wins, then an exact follow-up, then every combo continuing from it.
+                        typed_chains = {follow_key(chain) for chain in tc_selected_combos}
+                        matched = [key for key in combo_follows if follow_key(key) in typed_chains] or [
+                            key for key, follow in combo_follows.items() if follow in explicit_follows
+                        ] or [
+                            key for key, follow in combo_follows.items()
+                            if any(follow.startswith(explicit) for explicit in explicit_follows)
+                        ]
+                        for combo_key in matched:
+                            tc_selected_combos.add(combo_key)
+                            if combo_key not in extra_inputs:
+                                extra_inputs.append(combo_key)
+                        if matched:
                             continue
                     if len(combos) == 1:
                         combo_token = re.sub(r"\s+", "", combos[0].lower())
@@ -1782,7 +1791,8 @@ def find_moves_in_text(deps, text):
         property_only_query=property_only_query,
         startup_alias_query=startup_alias_query,
         charge_button_query=charge_button_query,
-        move_results_found=bool(results),
+        # A target combo's options are moves too: "hp" in "5HP > HP" is a button, not health.
+        move_results_found=bool(results or tc_prompt_blocks),
     )
     wants_stats = stats_intent.wants_stats
     stats_only = stats_intent.stats_only
