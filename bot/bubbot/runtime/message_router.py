@@ -1234,10 +1234,13 @@ async def _handle_sf6_prompt_disambiguation_reply(message, content_no_mentions, 
 
 buenavista_extension.log_status()
 
+# No privileged intents: the portal has them off (only the LLM bot needed them). Discord still sends the text of
+# messages that @mention the bot, replies to it and DMs, which is every way people ask for frame data.
 intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.voice_states = True
+intents.message_content = False
+intents.members = False
+intents.presences = False
+intents.voice_states = False
 # Raw gateway events carry SF Stats interactions to the web app unchanged; only needed when bridged.
 client = discord.Client(intents=intents, enable_debug_events=sfstats_bridge.enabled())
 # Do not rely on the application's portal defaults for bot-DM command availability.
