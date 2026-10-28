@@ -15,7 +15,7 @@ from bubbot.utils.frame_match_utils import find_matching_rows_standard, prefer_g
 from bubbot.utils.notation_match_utils import looks_like_notation_query, query_has_jump_motion_notation
 from bubbot.utils.row_utils import unique_rows
 from bubbot.utils.text_utils import compact_key, correct_alias_typos, normalize_query_terms, query_suffix_candidates, strip_noise_words, strip_query_terms
-from bubbot.utils.sfstats_style import ACTION, BRAND, toggle_style
+from bubbot.utils.sfstats_style import ACTION, BRAND, AllHitboxImagesButton, toggle_style
 
 
 BBCF_FRAME_DATA_FILE = "BBCF Frame Data.ods"
@@ -499,20 +499,9 @@ def build_frame_embed(row, show_notes=False):
     return embed
 
 
-class BBCFAllHitboxImagesButton(discord.ui.Button):
+class BBCFAllHitboxImagesButton(AllHitboxImagesButton):
     def __init__(self, row):
-        self.hitbox_links = get_media_links(row, limit=None)
-        super().__init__(
-            label="Show All Images",
-            style=ACTION,
-            disabled=len(self.hitbox_links) <= 1,
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        if len(self.hitbox_links) <= 1:
-            await interaction.response.defer()
-            return
-        await interaction.response.send_message("\n".join(self.hitbox_links))
+        super().__init__(get_media_links(row, limit=None))
 
 
 class BBCFNotesButton(discord.ui.Button):

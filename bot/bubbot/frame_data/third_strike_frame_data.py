@@ -26,7 +26,7 @@ from bubbot.utils.notation_match_utils import (
 )
 from bubbot.utils.row_utils import unique_rows
 from bubbot.utils.text_utils import compact_key, correct_alias_typos, normalize_query_terms, query_suffix_candidates, strip_noise_words, strip_query_terms
-from bubbot.utils.sfstats_style import ACTION, BRAND, toggle_style
+from bubbot.utils.sfstats_style import ACTION, BRAND, AllHitboxImagesButton, toggle_style
 
 
 THIRD_STRIKE_FRAME_DATA_FILE = "Third Strike Frame Data.ods"
@@ -760,20 +760,9 @@ def build_frame_embed(row, show_notes=False):
     return embed
 
 
-class ThirdStrikeAllHitboxImagesButton(discord.ui.Button):
+class ThirdStrikeAllHitboxImagesButton(AllHitboxImagesButton):
     def __init__(self, row):
-        self.hitbox_links = get_hitbox_links(row, limit=None)
-        super().__init__(
-            label="Show All Images",
-            style=ACTION,
-            disabled=len(self.hitbox_links) <= 1,
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        if len(self.hitbox_links) <= 1:
-            await interaction.response.defer()
-            return
-        await interaction.response.send_message("\n".join(self.hitbox_links))
+        super().__init__(get_hitbox_links(row, limit=None))
 
 
 class ThirdStrikeNotesButton(discord.ui.Button):

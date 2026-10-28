@@ -168,9 +168,9 @@ def build_sf6_cache(workbook_path: Path, output_path: Path, sleep_seconds: float
             index.setdefault((normalize_key(row.get("chara")), sf6_input_key(row.get("input"))), []).append(row)
 
     xls = pd.ExcelFile(workbook_path, engine="odf")
-    # The bot looks images up by character and compacted numCmd, so rows sharing one get an image only
-    # when they also share the hitbox.
-    pending: dict[tuple[str, str], tuple[str, str]] = {}
+    # The bot looks images up by character and compacted numCmd, so rows sharing one get images only
+    # when they also share the hitboxes.
+    pending: dict[tuple[str, str], tuple[str, tuple[str, ...]]] = {}
     conflicts: set[tuple[str, str]] = set()
     for sheet_name in xls.sheet_names:
         if not sheet_name.endswith("Normal"):
@@ -182,21 +182,22 @@ def build_sf6_cache(workbook_path: Path, output_path: Path, sleep_seconds: float
             chosen = pick_sf6_supercombo_row(candidates, row.get("moveName")) if candidates else None
             if not chosen:
                 continue
-            filename = sf6_hitbox_files(chosen["hitboxes"])[0]
+            filenames = tuple(sf6_hitbox_files(chosen["hitboxes"]))
             key = (char_key, normalize_key(num_cmd))
-            if key in pending and pending[key][1] != filename:
+            if key in pending and pending[key][1] != filenames:
                 conflicts.add(key)
-            pending.setdefault(key, (num_cmd, filename))
+            pending.setdefault(key, (num_cmd, filenames))
     for key in conflicts:
         del pending[key]
 
     # Resolved through the API: exact URLs, never wider than the file, and missing files drop out.
-    urls = resolve_file_urls(SF6_API_URL, [filename for _num_cmd, filename in pending.values()], SF6_HITBOX_IMAGE_WIDTH, sleep_seconds)
-    cache: dict[str, dict[str, str]] = {}
-    for (char_key, _key), (num_cmd, filename) in pending.items():
-        url = scraper_utils.file_url_for_name(urls, filename)
-        if url:
-            cache.setdefault(char_key, {})[num_cmd] = url
+    urls = resolve_file_urls(SF6_API_URL, [name for _num_cmd, names in pending.values() for name in names], SF6_HITBOX_IMAGE_WIDTH, sleep_seconds)
+    # Every hitbox image in SuperCombo's order: the card shows the first, Show All Images the rest.
+    cache: dict[str, dict[str, list[str]]] = {}
+    for (char_key, _key), (num_cmd, filenames) in pending.items():
+        move_urls = [url for url in (scraper_utils.file_url_for_name(urls, name) for name in filenames) if url]
+        if move_urls:
+            cache.setdefault(char_key, {})[num_cmd] = move_urls
 
     write_python_cache(output_path, "SF6_HITBOX_IMAGE_URLS", cache)
     print(f"[sf6-images] {len(conflicts)} numCmds left out: their FAT rows have different hitboxes", flush=True)
