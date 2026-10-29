@@ -1750,6 +1750,8 @@ async def on_message(message):
 async def _handle_message(message):
     # ignore bot msgs
     if message.author == client.user:
+        # The web app posts its reports of misread and failed requests as this bot: copy them to the error channel.
+        await sfstats_bridge.copy_web_app_report(message, client)
         return
 
     if not _DATA_LOADED:

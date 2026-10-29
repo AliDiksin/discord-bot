@@ -182,18 +182,27 @@ async def forward(payload, *, session=None, config=None):
         ack = fallback_ack(payload)
         outcome = f"unavailable ({type(error).__name__})"
         failure = type(error).__name__
+    undelivered = None
     try:
-        await _send_callback(session, payload, ack)
+        status = await _send_callback(session, payload, ack)
+        if status >= 400:
+            undelivered = f"Discord rejected the acknowledgement (HTTP {status})"
     except Exception as error:
         print(f"[sfstats-bridge] Acknowledgement delivery failed: {type(error).__name__}", flush=True)
+        undelivered = f"acknowledgement not delivered ({type(error).__name__})"
     print(
         f"[sfstats-bridge] {_interaction_label(payload)} type={payload.get('type')} ack={ack.get('type')} "
         f"{outcome} {round((time.monotonic() - started) * 1000)}ms",
         flush=True,
     )
-    if failure and payload.get("type") != 4:
+    if payload.get("type") != 4:
         # After the acknowledgement, never before it. Autocomplete fails quietly; anything a person sees fail is reported.
-        await sfstats_messages.report_unavailable(session, "interaction", f"/{_interaction_label(payload)}: {failure}")
+        if failure:
+            await sfstats_messages.report_unavailable(session, "interaction", f"/{_interaction_label(payload)}: {failure}")
+        elif undelivered:
+            # The person sees "This interaction failed": usually the web app answered after Discord's 3 seconds.
+            await sfstats_messages.report_unavailable(session, "acknowledgement", f"/{_interaction_label(payload)}: {undelivered}",
+                                                      title="interaction failed")
     return ack
 
 
@@ -228,6 +237,8 @@ async def claim_message(message, client, *, config=None, messages=None):
             allowed_guild_ids=None if config.global_commands else frozenset(config.test_guild_ids))
     except Exception as error:
         print(f"[sfstats-messages] Routing failed, leaving the message to Bub: {type(error).__name__}", flush=True)
+        await sfstats_messages.report_unavailable(_get_session(), "routing", type(error).__name__,
+                                                  title="message routing failed")
         return False
 
 
@@ -243,6 +254,18 @@ async def hand_over_message(message, client, *, config=None, messages=None):
             application_id=getattr(client, "application_id", None), session=_get_session(), bridge=config, config=messages)
     except Exception as error:
         print(f"[sfstats-messages] Hand-over failed: {type(error).__name__}", flush=True)
+        await sfstats_messages.report_unavailable(_get_session(), "hand-over", type(error).__name__,
+                                                  title="message hand-over failed")
+        return False
+
+
+async def copy_web_app_report(message, client):
+    """Bub's on_message hook for its own messages: see ``sfstats_messages.copy_web_app_report``."""
+    try:
+        return await sfstats_messages.copy_web_app_report(
+            _get_session(), message, bot_user_id=getattr(getattr(client, "user", None), "id", None))
+    except Exception as error:
+        print(f"[sfstats-messages] Report copy failed: {type(error).__name__}", flush=True)
         return False
 
 
