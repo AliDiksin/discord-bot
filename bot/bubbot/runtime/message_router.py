@@ -262,6 +262,10 @@ def _is_quiz_embed(embed):
     return "frame data quiz" in title
 
 
+def _is_card_message(message):
+    return bool(getattr(getattr(message, "flags", None), "components_v2", False))
+
+
 def _message_looks_like_quiz_output(message):
     return any(_is_quiz_embed(embed) for embed in getattr(message, "embeds", []) or [])
 
@@ -321,7 +325,8 @@ async def _is_reply_to_suppressed_bub_message(message):
     if _message_looks_like_quiz_output(replied_message):
         return False
 
-    if getattr(replied_message, "embeds", None):
+    # SF Stats' cards and Bub's menus are Components V2 messages: no embeds, but the same rule.
+    if getattr(replied_message, "embeds", None) or _is_card_message(replied_message):
         return True
 
     if _message_looks_like_frame_data_output(replied_message):
