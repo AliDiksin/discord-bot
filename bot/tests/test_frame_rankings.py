@@ -102,6 +102,20 @@ class AnswerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["none", "startup", "onBlock", "dmg", "range"], list(asked["metric"]["criteria"]))
         self.assertEqual("none", next(iter(asked["character"]["criteria"])))
 
+    async def test_a_character_named_in_the_message_wins_over_an_unsure_or_none_answer(self):
+        # "marisa longest button range" ranked every character: the model answered none for the character.
+        for character in (("none", 0.95), ("Ken", 0.2)):
+            decide = scripted(metric=("range", 0.9), sort=("desc", 0.9), character=character)
+            with self.subTest(character=character), patch.object(decisions, "decide", decide):
+                ranking = await frame_rankings.answer("jp longest button range", games=[SF6], session=None, config=ON)
+            self.assertEqual("JP", ranking.character)
+            self.assertEqual({"JP"}, {entry[0] for entry in ranking.entries})
+        # A sure answer still stands, and naming two characters names neither.
+        with patch.object(decisions, "decide", scripted(metric=("range", 0.9), sort=("desc", 0.9), character=("Ken", 0.9))):
+            self.assertEqual("Ken", (await frame_rankings.answer("jp longest range", games=[SF6], session=None, config=ON)).character)
+        with patch.object(decisions, "decide", scripted(metric=("range", 0.9), sort=("desc", 0.9), character=("none", 0.9))):
+            self.assertIsNone((await frame_rankings.answer("ken or jp longest range", games=[SF6], session=None, config=ON)).character)
+
     async def test_a_named_game_skips_its_question_and_unsure_answers_give_up(self):
         decide = scripted(metric=("startup", 0.9), sort=("asc", 0.9), character=("Sol", 0.9))
         with patch.object(decisions, "decide", decide):

@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 
 import discord
 
+from bubbot.data.aliases import CHARACTER_ALIASES
 from bubbot.runtime import decisions
+from bubbot.utils.character_lookup import find_aliases_in_text
 from bubbot.utils.choice_utils import character_choices
 from bubbot.utils.sfstats_style import BRAND
 
@@ -98,6 +100,19 @@ def offer(frame_data):
     result.kinds = [kind for kind, count in sorted(kinds.items(), key=lambda item: -item[1]) if count >= 2][:40]
     result.traits = [trait for trait in TRAITS if trait in traits]
     return result
+
+
+def named_character(text, game, available):
+    """The one character the message names outright ("marisa longest range"), by the table's names and, for SF6,
+    Bub's nicknames ("dj", "gief"); None when it names none or several."""
+    keys = list(available.characters.values())
+    aliases = {display: key for display, key in available.characters.items()}
+    if game.key == "sf6":
+        aliases.update({alias: canonical for alias, canonical in CHARACTER_ALIASES.items() if canonical in keys})
+    found = find_aliases_in_text(text, aliases, keys)
+    if len(found) != 1:
+        return None
+    return next(display for display, key in available.characters.items() if key == found[0])
 
 
 def count_option(n):
@@ -207,6 +222,9 @@ async def answer(text, *, games, session, tagged=(), config=None, label=None):
     if metric not in available.metrics or sort not in SORTS:
         return None
     character = decisions.sure(answers, "character")
+    # A character the message names outright counts even when the model is unsure or answers "none".
+    if character not in available.characters:
+        character = named_character(text, game, available)
     kind, trait = decisions.sure(answers, "kind"), decisions.sure(answers, "trait")
     count_text = decisions.sure(answers, "count")
     count = int(count_text.split()[0]) if count_text else DEFAULT_COUNT
