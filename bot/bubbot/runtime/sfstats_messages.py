@@ -238,8 +238,10 @@ async def forward(payload, *, url, session, bridge, timeout_seconds):
     return result
 
 
-async def claim(message, *, bot_user_id, application_id, session, bridge, config, allowed_guild_ids=None):
-    """True when SF Stats answers this message, so Bub must skip it."""
+async def claim(message, *, bot_user_id, application_id, session, bridge, config, allowed_guild_ids=None,
+                reads_as_frame_data=None):
+    """True when SF Stats answers this message, so Bub must skip it. ``reads_as_frame_data(text)`` is Bub's own
+    check: a message it reads as frame data ("yasmine boomerang") stays with Bub whatever the route question says."""
     if not (config.enabled and config.url and bridge.enabled and bot_user_id and application_id):
         return False
     facts = snapshot(message, bot_user_id)
@@ -247,6 +249,11 @@ async def claim(message, *, bot_user_id, application_id, session, bridge, config
     if kind is None or (kind == "bub" and not config.route_bub_mentions):
         return False
     if allowed_guild_ids is not None and (not facts["guild_id"] or int(facts["guild_id"]) not in allowed_guild_ids):
+        return False
+    # Frame data comes first: a move Bub's parser reads (a FAT common name like "boomerang") never reaches
+    # the route question, which can mistake a character plus a word for SF Stats data.
+    if reads_as_frame_data is not None and reads_as_frame_data(facts["content"]):
+        print(f"[sfstats-messages] addressed={kind} route=framedata (parser)", flush=True)
         return False
     # With a Decisions key the bot routes first (bubbot.runtime.decisions): frame data stays with Bub, and
     # SF Stats data goes to the web app marked as routed, so it skips its own route question.

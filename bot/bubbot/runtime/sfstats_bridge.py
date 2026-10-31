@@ -223,7 +223,7 @@ async def handle_raw_gateway_event(message, *, config=None):
     return asyncio.create_task(forward(payload, config=config))
 
 
-async def claim_message(message, client, *, config=None, messages=None):
+async def claim_message(message, client, *, config=None, messages=None, reads_as_frame_data=None):
     """Bub's on_message hook: True when SF Stats answers a plain-language message, so Bub skips it.
     See ``sfstats_messages``; any failure leaves the message to Bub."""
     config = config or CONFIG
@@ -234,7 +234,8 @@ async def claim_message(message, client, *, config=None, messages=None):
         return await sfstats_messages.claim(
             message, bot_user_id=getattr(getattr(client, "user", None), "id", None),
             application_id=getattr(client, "application_id", None), session=_get_session(), bridge=config, config=messages,
-            allowed_guild_ids=None if config.global_commands else frozenset(config.test_guild_ids))
+            allowed_guild_ids=None if config.global_commands else frozenset(config.test_guild_ids),
+            reads_as_frame_data=reads_as_frame_data)
     except Exception as error:
         print(f"[sfstats-messages] Routing failed, leaving the message to Bub: {type(error).__name__}", flush=True)
         await sfstats_messages.report_unavailable(_get_session(), "routing", type(error).__name__,

@@ -1031,6 +1031,16 @@ def _cheap_explicit_frame_game_tags(content_lower):
     return tags
 
 
+def _reads_as_frame_data(text):
+    """Frame data before SF Stats: another game's tag (SF Stats is SF6 only), or a move Bub's SF6 parser reads
+    ("yasmine boomerang", "aki coward crouch"). A bare character comparison ("ken vs ryu") stays a matchup question."""
+    text = decisions.request_text(text).lower()
+    if _cheap_explicit_frame_game_tags(text) - {"sf6"}:
+        return True
+    payload = find_moves_in_text(text)
+    return payload.get("mode") == "frame" and bool(payload.get("explicit_move_attempt") or not payload.get("wants_comparison"))
+
+
 def _selected_frame_parser_subset(content_lower, exact_matches):
     """Return parser keys to run, or None to run all (preserve fuzzy fallback).
 
@@ -1770,7 +1780,8 @@ async def _handle_message(message):
     # web app's Decisions call assigns to it. Everything else, and any failure, stays with Bub.
     # Rendering for SF Stats: the question already came from SF Stats, and only frame data answers.
     rendering = render_server.rendering()
-    if not rendering and not frame_resolver.resolving() and await sfstats_bridge.claim_message(message, client):
+    if not rendering and not frame_resolver.resolving() and await sfstats_bridge.claim_message(
+            message, client, reads_as_frame_data=_reads_as_frame_data):
         return
 
     directly_mentions_bot = message_directly_mentions_bot(message)
