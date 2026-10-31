@@ -23,6 +23,7 @@ from bubbot.frame_data.sf6_character_aliases import (
     should_skip_keyword_input,
 )
 from bubbot.frame_data.sf6_character_stats import apply_stats_context, match_stat_keys_in_text
+from bubbot.frame_data.sf6_stance import find_stance_rows
 from bubbot.frame_data.sf6_parser_helpers import collect_normal_notation_inputs
 from bubbot.frame_data.sf6_parser_helpers import normalize_button_word_notation
 from bubbot.frame_data.sf6_parser_helpers import normalize_charge_button_notation
@@ -1771,6 +1772,15 @@ def find_moves_in_text(deps, text):
                 results = filtered_tc_results
             elif tc_prompt_blocks:
                 results = []
+
+    # A stance or run named in the query ("aki stance hk", "marisa stance grab", "kimberly run mk") is answered
+    # from the sheet's "<starter> > <follow-up>" rows, over any other reading of its words or prompt.
+    if len(mentioned_chars) == 1 and not wants_comparison:
+        stance_rows = find_stance_rows(text_lower, FRAME_DATA.get(mentioned_chars[0], []))
+        if stance_rows:
+            results = stance_rows
+            tc_prompt_blocks = []
+            special_prompt_blocks = []
 
     if not wants_comparison:
         results = prefer_grounded_rows(results, text_lower)
