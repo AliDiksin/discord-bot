@@ -24,6 +24,7 @@ FILLER = frozenset((
     "cancelable", "info", "move", "attack", "button", "please", "pls", "me", "show", "give", "advantage",
 ))
 STOP_WORDS = frozenset(("vs", "versus", "and", "or", "compare", "compared"))
+COMPARISON_SPLIT = re.compile(r"\b(?:vs|versus|and|against|compared\s+(?:to|with))\b")
 SPEC_WORDS = {"punch": "p", "kick": "k", "throw": "lplk"}
 
 
@@ -186,3 +187,35 @@ def find_stance_rows(text_lower, rows):
     if not words:
         return [starter]
     return _match_followups(followups, str(starter.get("numCmd") or "").strip(), words)
+
+
+def _character_key(name):
+    """'Chun-li' and 'chun-li', 'A.k.i' and 'a.k.i' alike: rows and the parser spell characters differently."""
+    return re.sub(r"[^a-z0-9]", "", str(name or "").lower())
+
+
+def apply_stance_rows(text_lower, mentioned_chars, results, frame_data, *, find_characters):
+    """``results`` with each named stance's rows in place of that character's other rows, and whether every
+    mentioned character named one. One character reads the whole query; "alex stance lp vs chun stance lp"
+    reads each side for the character named in it."""
+    if len(mentioned_chars) == 1:
+        parts = {mentioned_chars[0]: text_lower}
+    else:
+        parts = {}
+        for part in COMPARISON_SPLIT.split(text_lower):
+            chars = find_characters(part)
+            if len(chars) == 1 and chars[0] in mentioned_chars:
+                parts.setdefault(chars[0], part)
+    resolved = {}
+    for char, part in parts.items():
+        rows = find_stance_rows(part, frame_data.get(char, []))
+        if rows:
+            resolved[char] = rows
+    if not resolved:
+        return results, False
+    merged = []
+    for char in mentioned_chars:
+        merged.extend(resolved.get(char) or [row for row in results if _character_key(row.get("char_name")) == _character_key(char)])
+    mentioned_keys = {_character_key(char) for char in mentioned_chars}
+    merged.extend(row for row in results if _character_key(row.get("char_name")) not in mentioned_keys)
+    return merged, len(resolved) == len(mentioned_chars)
